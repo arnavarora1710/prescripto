@@ -4,10 +4,10 @@ import { supabase } from '../lib/supabaseClient';
 import { Patient, Visit } from '../types/app';
 
 // Define the structure expected from the RPC call
-interface PatientDetailResponse {
-  patient: Patient & { username?: string | null };
-  visits: Visit[];
-}
+// interface PatientDetailResponse {
+//   patient: Patient & { username?: string | null };
+//   visits: Visit[];
+// }
 
 const PatientDetailPageClinicianView: React.FC = () => {
   const { patientId } = useParams<{ patientId: string }>();
@@ -33,8 +33,8 @@ const PatientDetailPageClinicianView: React.FC = () => {
         try {
             console.log(`Fetching patient details via RPC for ID: ${patientId}`);
             
-            // Call the RPC function
-            const { data: rpcData, error: rpcError } = await supabase.rpc<PatientDetailResponse>(
+            // Call the RPC function - Let TS infer the type for now
+            const { data: rpcData, error: rpcError } = await supabase.rpc(
                 'get_patient_details_for_clinician',
                 { p_patient_id: patientId } 
             );

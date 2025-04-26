@@ -115,20 +115,20 @@ const PatientProfilePage: React.FC = () => {
     // Dependency: only re-run if the patient's profile ID changes or auth finishes loading
   }, [basicPatientProfile?.profileId, authLoading]);
 
-  const handleAddInsurance = () => {
-    // TODO: Implement OCR logic or manual form for insurance
-    alert('OCR for Insurance Details - Placeholder');
-  };
+  // const handleAddInsurance = () => {
+  //   // TODO: Implement OCR logic or manual form for insurance
+  //   alert('OCR for Insurance Details - Placeholder');
+  // };
 
-  const handleAddMedicalHistory = () => {
-    // TODO: Implement OCR logic or manual form for medical history/allergens
-    alert('Update Medical History/Allergens - Placeholder');
-  };
+  // const handleAddMedicalHistory = () => {
+  //   // TODO: Implement OCR logic or manual form for medical history/allergens
+  //   alert('Update Medical History/Allergens - Placeholder');
+  // };
 
   // --- Profile Picture Upload Logic ---
-  const handleFileSelectClick = () => {
-      fileInputRef.current?.click(); // Trigger hidden file input
-  };
+  // const handleFileSelectClick = () => {
+  //     fileInputRef.current?.click(); // Trigger hidden file input
+  // };
 
   const handleProfilePictureUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
       setUploading(true);

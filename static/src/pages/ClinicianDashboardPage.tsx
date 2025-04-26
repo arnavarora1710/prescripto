@@ -85,10 +85,6 @@ const ClinicianDashboardPage: React.FC = () => {
     }
   }, [authProfile?.profileId, authLoading, recentVisits.length]);
 
-  const handleFileSelectClick = () => {
-      fileInputRef.current?.click();
-  };
-
   const handleProfilePictureUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
       setUploading(true);
       setUploadError(null);

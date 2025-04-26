@@ -1,6 +1,11 @@
-/Users/arnav/prescripto/src/main/java/com/hacktech/healthai/HealthaiApplication.java
-/Users/arnav/prescripto/src/main/java/com/hacktech/healthai/controller/HelloController.java
-/Users/arnav/prescripto/src/main/java/com/hacktech/healthai/controller/PatientController.java
-/Users/arnav/prescripto/src/main/java/com/hacktech/healthai/dto/PatientDto.java
-/Users/arnav/prescripto/src/main/java/com/hacktech/healthai/service/PatientService.java
-/Users/arnav/prescripto/src/main/java/com/hacktech/healthai/service/PatientServiceImpl.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/HealthaiApplication.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/controller/HelloController.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/controller/OcrController.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/controller/PatientController.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/OcrRequestDto.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/OcrResponseDto.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/PatientDto.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/service/OcrService.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/service/OcrServiceImpl.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/service/PatientService.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/service/PatientServiceImpl.java

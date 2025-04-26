@@ -1,14 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
-// We might not need the User type from supabase-js directly anymore
-// import { User } from '@supabase/supabase-js'; 
-import { Patient, Prescription, Visit, JSONValue } from '../types/app'; // Import types, including JSONValue
-import { useAuth } from '../context/AuthContext'; // Import useAuth
-import { FaUserCircle, FaPlus, FaCamera, FaTimes, FaDownload, FaSpinner, FaEdit, FaCheckCircle, FaExclamationTriangle, FaFileMedicalAlt, FaCalendarCheck } from 'react-icons/fa';
-import jsPDF from 'jspdf'; // <-- Import jsPDF
-import autoTable from 'jspdf-autotable'; // <-- Import autoTable
-import Webcam from 'react-webcam'; // <-- Import Webcam
-import { useNavigate } from 'react-router-dom'; // Import useNavigate
+import { Patient, JSONValue } from '../types/app';
+import { useAuth } from '../context/AuthContext';
+import { FaUserCircle, FaPlus, FaCamera, FaSpinner, FaEdit, FaCheckCircle, FaExclamationTriangle, FaFileMedicalAlt, FaCalendarCheck } from 'react-icons/fa';
+import Webcam from 'react-webcam';
+import { useNavigate } from 'react-router-dom';
 
 // --- Add Type for OCR Response ---
 interface OcrResponseDto {

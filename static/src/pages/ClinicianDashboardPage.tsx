@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom'; // Import useNavigate
 import { supabase } from '../lib/supabaseClient';
 // import { User } from '@supabase/supabase-js'; // Remove unused import
-import { Clinician, Visit, Patient, Prescription } from '../types/app'; // Import types including Prescription
+import { Clinician, Visit, Patient } from '../types/app'; // Import types
 import { useAuth } from '../context/AuthContext'; // Import useAuth
 import { FaUserCircle, FaFileMedicalAlt } from 'react-icons/fa'; // Import icon
 

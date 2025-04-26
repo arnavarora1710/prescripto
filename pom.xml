@@ -45,11 +45,13 @@
 		</dependency>
 
 		<!-- https://mvnrepository.com/artifact/net.sourceforge.tess4j/tess4j -->
+		<!--
 		<dependency>
 			<groupId>net.sourceforge.tess4j</groupId>
 			<artifactId>tess4j</artifactId>
-			<version>5.11.0</version> <!-- Check for the latest version -->
+			<version>5.11.0</version> 
 		</dependency>
+		-->
 
 		<!-- Added for loading .env file -->
 		<dependency>
@@ -66,17 +68,21 @@
 		</dependency>
 
 		<!-- Added for Spring Data JPA -->
+		<!--
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-data-jpa</artifactId>
 		</dependency>
+		-->
 
 		<!-- Added for PostgreSQL Database Connection -->
+		<!--
 		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
-			<scope>runtime</scope> <!-- Only needed at runtime -->
+			<scope>runtime</scope> 
 		</dependency>
+		-->
 
 		<!-- Dependency for loading .env variables into Spring Environment -->
 		<dependency>
@@ -84,7 +90,47 @@
 			<artifactId>spring-dotenv</artifactId>
 			<version>4.0.0</version> <!-- Check for latest version -->
 		</dependency>
+
+		<!-- Added for AWS Textract -->
+		<!-- <dependency> -->
+			<!-- <groupId>software.amazon.awssdk</groupId> -->
+			<!-- <artifactId>textract</artifactId> -->
+			<!-- Use the BOM for version management -->
+		<!-- </dependency> -->
+
+		<!-- Added for Google Cloud Vision -->
+		<dependency>
+			<groupId>com.google.cloud</groupId>
+			<artifactId>google-cloud-vision</artifactId>
+			<!-- Use the BOM for version management -->
+		</dependency>
 	</dependencies>
+
+	<!-- Add AWS SDK BOM for consistent versions -->
+	<!-- <dependencyManagement> -->
+		<!-- <dependencies> -->
+			<!-- <dependency> -->
+				<!-- <groupId>software.amazon.awssdk</groupId> -->
+				<!-- <artifactId>bom</artifactId> -->
+				<!-- <version>2.26.23</version> --> <!-- Use a recent BOM version -->
+				<!-- <type>pom</type> -->
+				<!-- <scope>import</scope> -->
+			<!-- </dependency> -->
+		<!-- </dependencies> -->
+	<!-- </dependencyManagement> -->
+
+	<!-- Add Google Cloud Libraries BOM for consistent versions -->
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>com.google.cloud</groupId>
+				<artifactId>libraries-bom</artifactId>
+				<version>26.43.0</version> <!-- Use a recent BOM version -->
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 
 	<build>
 		<plugins>

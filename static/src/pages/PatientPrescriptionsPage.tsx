@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Prescription, Patient } from '../types/app';
+import { Prescription } from '../types/app';
 import { useAuth } from '../context/AuthContext';
 import { FaDownload, FaSpinner, FaArrowLeft } from 'react-icons/fa';
 import jsPDF from 'jspdf';

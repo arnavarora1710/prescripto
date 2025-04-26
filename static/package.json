@@ -25,7 +25,9 @@
     "react-router-dom": "^6.30.0",
     "react-scroll": "^1.9.3",
     "react-webcam": "^7.2.0",
-    "tailwindcss": "^4.1.4"
+    "tailwindcss": "^4.1.4",
+    "@google/generative-ai": "^0.16.0",
+    "date-fns": "^3.6.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",

@@ -157,8 +157,7 @@ Frequency: [Frequency]
 Notes: [Any notes or leave blank]
 
 Patient Details:
-- Medical History: ${JSON.stringify(patientData.medical_history || 'N/A')}
-- Allergies: ${JSON.stringify((patientData.medical_history as any)?.allergies || 'N/A')} 
+- Allergies: ${JSON.stringify(patientData.medical_history || 'N/A')}
 Visit Details:
 - Reason: ${visitReason.trim()}
 - Clinician Notes: ${visitNotes.trim()}
@@ -167,6 +166,7 @@ Generate prescription:
 `;
 
             console.log("Calling Gemini API with prompt...");
+            console.log(prompt);
             const geminiResponse = await fetch(geminiApiUrl, {
                 method: 'POST',
                 headers: {

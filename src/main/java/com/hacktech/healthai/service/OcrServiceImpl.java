@@ -82,7 +82,7 @@ public class OcrServiceImpl implements OcrService {
             if (res.hasError()) {
                 log.error("Google Cloud Vision API Error: {}", res.getError().getMessage());
                 throw new Exception("Google Cloud Vision API Error: " + res.getError().getMessage());
-            }
+        }
 
             // Get the full text annotation
             String extractedText = "";

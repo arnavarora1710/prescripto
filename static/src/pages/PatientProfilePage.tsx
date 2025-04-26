@@ -2,9 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Patient, JSONValue } from '../types/app';
 import { useAuth } from '../context/AuthContext';
-import { FaUserCircle, FaPlus, FaCamera, FaSpinner, FaEdit, FaCheckCircle, FaExclamationTriangle, FaFileMedicalAlt, FaCalendarCheck } from 'react-icons/fa';
+import { FaUserCircle, FaPlus, FaCamera, FaSpinner, FaEdit, FaCheckCircle, FaExclamationTriangle, FaFileMedicalAlt, FaCalendarCheck, FaSave, FaTimes } from 'react-icons/fa';
 import Webcam from 'react-webcam';
 import { useNavigate } from 'react-router-dom';
+
+// --- STEP 1: Add Google AI SDK Import --- 
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 
 // --- Add Type for OCR Response ---
 interface OcrResponseDto {
@@ -60,12 +63,15 @@ const PatientProfilePage: React.FC = () => {
   const [groupNumber, setGroupNumber] = useState(''); // Optional field
   const [updatingInsurance, setUpdatingInsurance] = useState(false);
   const [insuranceUpdateError, setInsuranceUpdateError] = useState<string | null>(null);
+  const [isEditingInsurance, setIsEditingInsurance] = useState(false); // <-- State for Edit Mode
 
   const insuranceFileInputRef = React.useRef<HTMLInputElement>(null);
   const webcamRef = React.useRef<Webcam>(null); // <-- Ref for webcam
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [ocrResultText, setOcrResultText] = useState<string | null>(null);
+  const [geminiLoading, setGeminiLoading] = useState(false); // <-- State for Gemini loading
+  const [geminiError, setGeminiError] = useState<string | null>(null); // <-- State for Gemini error
   // --- End Insurance/OCR State ---
 
   // --- State for Camera ---
@@ -80,6 +86,104 @@ const PatientProfilePage: React.FC = () => {
   const error = authError || errorPageData;
 
   const [successMessage, setSuccessMessage] = useState<string | null>(null); // Add success state if not already present
+
+  // --- STEP 2: Get Gemini API Key from Environment ---
+  // WARNING: Even using .env, VITE_ variables are embedded in the build output
+  // and accessible client-side. This is still insecure for production.
+  // Use a backend proxy for secure API key handling.
+  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+  let genAI: GoogleGenerativeAI | null = null;
+  let geminiInitializationError: string | null = null;
+
+  if (!GEMINI_API_KEY) {
+    console.error("VITE_GEMINI_API_KEY environment variable is not set.");
+    geminiInitializationError = "Gemini API Key not configured. AI features disabled.";
+    // Note: We will check for this error before calling Gemini functions.
+  } else {
+    genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+  }
+
+  // --- STEP 3: Function to call Gemini for parsing ---
+  const callGeminiForParsing = async (text: string): Promise<{ provider: string | null, policyNumber: string | null, groupNumber: string | null } | null> => {
+    // Check if Gemini was initialized successfully
+    if (!genAI || geminiInitializationError) {
+      setGeminiError(geminiInitializationError || "Gemini client not initialized.");
+      return null;
+    }
+
+    setGeminiLoading(true);
+    setGeminiError(null);
+    try {
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // Or your preferred model
+
+      const prompt = `Extract insurance details from the following text. Respond ONLY with a valid JSON object containing the keys "provider", "policyNumber", and "groupNumber". Use null or an empty string if a value cannot be found. Do not include any explanatory text before or after the JSON. Text: \\n\\n${text}`;
+
+      console.log("Sending prompt to Gemini:", prompt);
+
+      const generationConfig = {
+        // temperature: 0.9, // Adjust creativity/determinism if needed
+        // topK: 1,
+        // topP: 1,
+        maxOutputTokens: 2048, // Adjust as needed
+        responseMimeType: "application/json", // Enforce JSON output
+      };
+
+      const safetySettings = [
+        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+      ];
+
+      // Corrected generateContent call signature
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig,
+        safetySettings,
+      });
+      const response = result.response;
+
+      // Check for safety blocks or other issues before accessing text()
+      if (!response || response.promptFeedback?.blockReason) {
+        const blockReason = response?.promptFeedback?.blockReason;
+        const safetyRatings = response?.candidates?.[0]?.safetyRatings;
+        console.error('Gemini request blocked. Reason:', blockReason, 'Ratings:', safetyRatings);
+        throw new Error(`Gemini request blocked due to safety settings (Reason: ${blockReason || 'Unknown'}).`);
+      }
+
+      const responseText = response.text();
+
+      console.log("Raw Gemini Response Text:", responseText);
+
+      // Try parsing the JSON response
+      try {
+        const parsedJson = JSON.parse(responseText);
+        // Basic validation of the structure
+        if (typeof parsedJson === 'object' && parsedJson !== null &&
+          'provider' in parsedJson && 'policyNumber' in parsedJson && 'groupNumber' in parsedJson) {
+          console.log("Parsed Insurance Details from Gemini:", parsedJson);
+          return {
+            provider: parsedJson.provider || null,
+            policyNumber: parsedJson.policyNumber || null,
+            groupNumber: parsedJson.groupNumber || null,
+          };
+        } else {
+          throw new Error("Gemini response JSON missing expected keys.");
+        }
+      } catch (parseError: any) {
+        console.error("Failed to parse Gemini JSON response:", parseError, "Raw text:", responseText);
+        throw new Error(`Failed to parse Gemini response: ${parseError.message}`);
+      }
+
+    } catch (error: any) {
+      console.error("Error calling Gemini API:", error);
+      setGeminiError(`Gemini API Error: ${error.message}`);
+      return null;
+    } finally {
+      setGeminiLoading(false);
+    }
+  };
+  // --- End Gemini Parsing Function ---
 
   useEffect(() => {
     // Use the profileId from the basic context profile
@@ -291,7 +395,7 @@ const PatientProfilePage: React.FC = () => {
   };
   // --- End Handle Add History Item ---
 
-  // --- Handle Save Insurance (Manual) ---
+  // --- Handle Save Insurance (Manual - Now called from Edit Mode) ---
   const handleSaveInsurance = async () => {
     if (!fullPatientData?.id) {
       setInsuranceUpdateError("Cannot update insurance: Patient data not fully loaded.");
@@ -339,6 +443,16 @@ const PatientProfilePage: React.FC = () => {
   };
   // --- End Handle Save Insurance ---
 
+  // --- Helper function to handle saving and exiting edit mode ---
+  const handleSaveInsuranceAndExitEditMode = async () => {
+    await handleSaveInsurance();
+    // Only exit edit mode if save was successful (no error)
+    if (!insuranceUpdateError) {
+      setIsEditingInsurance(false);
+    }
+  };
+  // --- End Helper Function ---
+
   // --- Centralized OCR Request Function ---
   const processOcrRequest = async (base64Image: string | null) => {
     if (!base64Image) {
@@ -370,8 +484,37 @@ const PatientProfilePage: React.FC = () => {
 
       const result: OcrResponseDto = await response.json();
       console.log("OCR Result Text:", result.extractedText);
-      setOcrResultText(result.extractedText || "No text extracted.");
-      setSuccessMessage("OCR complete. Review the extracted text and manually update fields if needed."); // Set success
+      const extractedText = result.extractedText || "No text detected.";
+      setOcrResultText(extractedText);
+      // setSuccessMessage("OCR complete. Review the extracted text below."); // Initial message removed
+
+      // --- STEP 5: Call Gemini for parsing and update ---
+      if (extractedText !== "No text detected." && extractedText.trim().length > 0) {
+        const parsedData = await callGeminiForParsing(extractedText);
+        if (parsedData) {
+          // --- MODIFIED: Populate state and enter edit mode instead of auto-saving ---
+          // await updateInsuranceWithParsedData(parsedData); // REMOVED auto-save
+          setInsuranceProvider(parsedData.provider || '');
+          setPolicyNumber(parsedData.policyNumber || '');
+          setGroupNumber(parsedData.groupNumber || '');
+          setIsEditingInsurance(true); // Enter edit mode
+          setInsuranceUpdateError(null); // Clear any previous edit errors
+          setSuccessMessage("AI extracted details. Please review and save changes.");
+          setTimeout(() => setSuccessMessage(null), 5000); // Longer timeout for review
+          // --- End Modification ---
+        } else {
+          // Handle case where Gemini call failed but OCR succeeded
+          setGeminiError(prev => prev || "Gemini parsing failed. Please enter details manually or try scanning again.");
+        }
+      } else if (extractedText !== "No text detected.") {
+        console.warn("OCR returned minimal text, skipping Gemini parsing.");
+        setOcrError("OCR detected very little text. Please try scanning again or enter manually.");
+      } else {
+        // OCR detected nothing
+        setSuccessMessage("OCR complete. No text detected.");
+        setTimeout(() => setSuccessMessage(null), 3000);
+      }
+      // --- End Gemini Call ---
 
     } catch (err: any) {
       console.error("Error during OCR processing:", err);
@@ -470,6 +613,12 @@ const PatientProfilePage: React.FC = () => {
           <div className="flex items-center bg-orange-900/60 border border-orange-700 text-orange-200 px-4 py-3 rounded-lg relative animate-fade-in">
             <FaExclamationTriangle className="h-5 w-5 mr-3 flex-shrink-0" />
             <span className="block sm:inline text-sm">OCR Error: {ocrError}</span>
+          </div>
+        )}
+        {geminiError && (
+          <div className="flex items-center bg-orange-900/60 border border-orange-700 text-orange-200 px-4 py-3 rounded-lg relative animate-fade-in">
+            <FaExclamationTriangle className="h-5 w-5 mr-3 flex-shrink-0" />
+            <span className="block sm:inline text-sm">AI Error: {geminiError}</span>
           </div>
         )}
         {successMessage && (
@@ -587,79 +736,122 @@ const PatientProfilePage: React.FC = () => {
           {/* --- Insurance Details Section (Content remains the same) --- */}
           <div className="pt-8 border-t border-border-color">
             {/* ... (Existing Insurance display, input, and OCR sections) ... */}
-            <h3 className="text-lg font-semibold text-pastel-lavender mb-4">Insurance Details</h3>
-            {/* Display */}
-            <div className="text-sm bg-dark-input p-4 rounded-lg border border-border-color/50 space-y-3 mb-6 min-h-[60px]">
-              {fullPatientData.insurance_details &&
-                typeof fullPatientData.insurance_details === 'object' &&
-                fullPatientData.insurance_details !== null &&
-                Object.keys(fullPatientData.insurance_details).length > 0 ? (
-                Object.entries(fullPatientData.insurance_details).map(([key, value]) => (
-                  <dl key={key} className="flex flex-col sm:flex-row sm:justify-between sm:items-start py-1 border-b border-border-color/20 last:border-b-0">
-                    <dt className="font-medium capitalize text-off-white/80 w-full sm:w-1/3 mr-2 flex-shrink-0 break-words">{key.replace(/_/g, ' ')}:</dt>
-                    <dd className="text-off-white text-left sm:text-right flex-grow break-words mt-1 sm:mt-0">{String(value) || 'N/A'}</dd>
-                  </dl>
-                ))
-              ) : (
-                <p className="text-sm text-off-white/60 italic py-2">No insurance details provided.</p>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-pastel-lavender">Insurance Details</h3>
+              {/* --- Edit Button --- */}
+              {!isEditingInsurance && (
+                <button
+                  onClick={() => {
+                    // Pre-fill state with current saved data before entering edit mode
+                    const details = fullPatientData.insurance_details as Record<string, string> | null;
+                    setInsuranceProvider(details?.provider || '');
+                    setPolicyNumber(details?.policy_number || '');
+                    setGroupNumber(details?.group_number || '');
+                    setInsuranceUpdateError(null); // Clear any previous edit errors
+                    setIsEditingInsurance(true);
+                  }}
+                  className="flex items-center text-sm text-pastel-blue hover:text-electric-blue disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 p-1 rounded"
+                  disabled={updatingInsurance || geminiLoading || !!geminiInitializationError} // Disable if Gemini not initialized
+                >
+                  <FaEdit className="mr-1 h-3 w-3" /> Edit
+                </button>
               )}
             </div>
-            {/* Manual Input */}
-            <div className="space-y-3 mb-6 p-4 bg-dark-input/30 border border-border-color/30 rounded-lg">
-              <label className="block text-sm font-medium text-off-white/90 mb-1">
-                Update Insurance Details Manually
-              </label>
-              <div>
-                <label htmlFor="insuranceProvider" className="block text-xs font-medium text-off-white/80 mb-1">Provider Name</label>
-                <input
-                  id="insuranceProvider"
-                  type="text"
-                  value={insuranceProvider}
-                  onChange={(e) => setInsuranceProvider(e.target.value)}
-                  placeholder="Insurance Company Name"
-                  className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-electric-blue focus:ring-1 focus:ring-electric-blue text-sm transition duration-150"
-                  disabled={updatingInsurance}
-                />
+
+            {/* --- STEP 6: Conditional Rendering for Display/Edit --- */}
+            {!isEditingInsurance ? (
+              // --- Display View --- 
+              <div className="text-sm bg-dark-input p-4 rounded-lg border border-border-color/50 space-y-3 mb-6 min-h-[60px]">
+                {fullPatientData.insurance_details &&
+                  typeof fullPatientData.insurance_details === 'object' &&
+                  fullPatientData.insurance_details !== null &&
+                  Object.keys(fullPatientData.insurance_details).filter(k => k !== 'ocr_raw_text').length > 0 ? (
+                  Object.entries(fullPatientData.insurance_details).map(([key, value]) => (
+                    // --- Condition to hide raw OCR text --- 
+                    key !== 'ocr_raw_text' && value && (
+                      <dl key={key} className="flex flex-col sm:flex-row sm:justify-between sm:items-start py-1 border-b border-border-color/20 last:border-b-0">
+                        <dt className="font-medium capitalize text-off-white/80 w-full sm:w-1/3 mr-2 flex-shrink-0 break-words">{key.replace(/_/g, ' ')}:</dt>
+                        <dd className="text-off-white text-left sm:text-right flex-grow break-words mt-1 sm:mt-0">{String(value) || 'N/A'}</dd>
+                      </dl>
+                    )
+                  ))
+                ) : (
+                  <p className="text-sm text-off-white/60 italic py-2">No insurance details provided. Use OCR below or click 'Edit' to add manually.</p>
+                )}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            ) : (
+              // --- Edit View --- 
+              <div className="space-y-3 mb-6 p-4 bg-dark-input/30 border border-border-color/30 rounded-lg animate-fade-in">
                 <div>
-                  <label htmlFor="policyNumber" className="block text-xs font-medium text-off-white/80 mb-1">Policy/Member Number</label>
+                  <label htmlFor="insuranceProviderEdit" className="block text-xs font-medium text-off-white/80 mb-1">Provider Name</label>
                   <input
-                    id="policyNumber"
+                    id="insuranceProviderEdit"
                     type="text"
-                    value={policyNumber}
-                    onChange={(e) => setPolicyNumber(e.target.value)}
-                    placeholder="Policy or Member ID"
+                    value={insuranceProvider} // Use state variable
+                    onChange={(e) => setInsuranceProvider(e.target.value)}
+                    placeholder="Insurance Company Name"
                     className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-electric-blue focus:ring-1 focus:ring-electric-blue text-sm transition duration-150"
                     disabled={updatingInsurance}
                   />
                 </div>
-                <div>
-                  <label htmlFor="groupNumber" className="block text-xs font-medium text-off-white/80 mb-1">Group Number (Optional)</label>
-                  <input
-                    id="groupNumber"
-                    type="text"
-                    value={groupNumber}
-                    onChange={(e) => setGroupNumber(e.target.value)}
-                    placeholder="Group Number"
-                    className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-electric-blue focus:ring-1 focus:ring-electric-blue text-sm transition duration-150"
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="policyNumberEdit" className="block text-xs font-medium text-off-white/80 mb-1">Policy/Member Number</label>
+                    <input
+                      id="policyNumberEdit"
+                      type="text"
+                      value={policyNumber} // Use state variable
+                      onChange={(e) => setPolicyNumber(e.target.value)}
+                      placeholder="Policy or Member ID"
+                      className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-electric-blue focus:ring-1 focus:ring-electric-blue text-sm transition duration-150"
+                      disabled={updatingInsurance}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="groupNumberEdit" className="block text-xs font-medium text-off-white/80 mb-1">Group Number (Optional)</label>
+                    <input
+                      id="groupNumberEdit"
+                      type="text"
+                      value={groupNumber} // Use state variable
+                      onChange={(e) => setGroupNumber(e.target.value)}
+                      placeholder="Group Number"
+                      className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-electric-blue focus:ring-1 focus:ring-electric-blue text-sm transition duration-150"
+                      disabled={updatingInsurance}
+                    />
+                  </div>
+                </div>
+                {insuranceUpdateError && (
+                  <p className="text-red-400 text-xs pt-1">Error: {insuranceUpdateError}</p>
+                )}
+                <div className="flex justify-end pt-2 space-x-3">
+                  <button
+                    onClick={() => setIsEditingInsurance(false)} // Cancel hides the edit view
                     disabled={updatingInsurance}
-                  />
+                    className="flex items-center justify-center px-4 py-2 min-w-[100px] bg-gray-600 hover:bg-gray-700 text-white rounded-md text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition duration-150 shadow"
+                  >
+                    <FaTimes className="mr-1.5 h-4 w-4" /> Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveInsuranceAndExitEditMode} // Use helper to save and exit
+                    disabled={updatingInsurance || !insuranceProvider.trim() || !policyNumber.trim()} // Basic validation
+                    className="flex items-center justify-center px-4 py-2 min-w-[120px] bg-pastel-blue/80 hover:bg-pastel-blue text-dark-bg rounded-md text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition duration-150 shadow"
+                  >
+                    {updatingInsurance ? <FaSpinner className="animate-spin mr-2 h-4 w-4" /> : <FaSave className="mr-1.5 h-4 w-4" />} Save Changes
+                  </button>
                 </div>
               </div>
-              <div className="flex justify-end pt-1">
-                <button
-                  onClick={handleSaveInsurance}
-                  disabled={updatingInsurance || !insuranceProvider.trim() || !policyNumber.trim()}
-                  className="flex items-center justify-center px-4 py-2 min-w-[120px] bg-pastel-blue/80 hover:bg-pastel-blue text-dark-bg rounded-md text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition duration-150 shadow"
-                >
-                  {updatingInsurance ? <FaSpinner className="animate-spin mr-2 h-4 w-4" /> : <FaPlus className="mr-1.5 h-4 w-4" />} Save Details
-                </button>
-              </div>
-            </div>
-            {/* OCR Section */}
+            )}
+            {/* --- End Conditional Rendering --- */}
+
+            {/* OCR Section (Remains largely the same, just below the display/edit block) */}
             <div className="mt-6 pt-6 border-t border-border-color/50">
-              <h4 className="text-md font-semibold text-pastel-lavender/90 mb-3">Or Upload/Scan Card</h4>
+              <h4 className="text-md font-semibold text-pastel-lavender/90 mb-3">Scan Card to Auto-Fill Details</h4>
+              {/* Add warning if Gemini is not configured */}
+              {geminiInitializationError && (
+                <p className="text-orange-400 text-xs mb-3 flex items-center">
+                  <FaExclamationTriangle className="mr-1.5 h-4 w-4" /> {geminiInitializationError}
+                </p>
+              )}
               {/* Camera View (Conditional) */}
               {showCamera && (
                 <div className="fixed inset-0 bg-black/80 flex flex-col items-center justify-center z-50 p-4 animate-fade-in">
@@ -673,21 +865,24 @@ const PatientProfilePage: React.FC = () => {
               {/* OCR Buttons (when camera off) */}
               {!showCamera && (
                 <div className="flex items-center flex-wrap gap-3 mb-3">
-                  <input type="file" accept="image/*" ref={insuranceFileInputRef} onChange={handleInsuranceOcrUpload} className="hidden" disabled={ocrLoading || showCamera} />
-                  <button onClick={() => insuranceFileInputRef.current?.click()} disabled={ocrLoading || showCamera} className="flex items-center px-4 py-2 bg-dark-input hover:bg-dark-card border border-border-color/70 text-off-white/90 rounded-md text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition duration-150">
+                  <input type="file" accept="image/*" ref={insuranceFileInputRef} onChange={handleInsuranceOcrUpload} className="hidden" disabled={ocrLoading || showCamera || !!geminiInitializationError} />
+                  <button onClick={() => insuranceFileInputRef.current?.click()} disabled={ocrLoading || showCamera || !!geminiInitializationError} className="flex items-center px-4 py-2 bg-dark-input hover:bg-dark-card border border-border-color/70 text-off-white/90 rounded-md text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition duration-150">
                     {ocrLoading && !showCamera ? <FaSpinner className="animate-spin mr-2" /> : <FaCamera className="mr-1.5" />} Choose Image
                   </button>
-                  <button onClick={() => handleOpenCamera('environment')} disabled={ocrLoading || showCamera} className="flex items-center px-4 py-2 bg-dark-input hover:bg-dark-card border border-border-color/70 text-off-white/90 rounded-md text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition duration-150">
+                  <button onClick={() => handleOpenCamera('environment')} disabled={ocrLoading || showCamera || !!geminiInitializationError} className="flex items-center px-4 py-2 bg-dark-input hover:bg-dark-card border border-border-color/70 text-off-white/90 rounded-md text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition duration-150">
                     <FaCamera className="mr-1.5" /> Scan with Camera
                   </button>
                 </div>
               )}
               {/* OCR Status/Result */}
               {ocrLoading && <p className="text-sm text-pastel-blue mb-2 flex items-center"><FaSpinner className="animate-spin mr-2" /> Processing OCR...</p>}
-              {ocrError && <p className="text-red-400 text-xs mb-2">{ocrError}</p>}
+              {geminiLoading && <p className="text-sm text-pastel-blue mb-2 flex items-center"><FaSpinner className="animate-spin mr-2" /> Analyzing text with AI...</p>} {/* Gemini Loading */}
+              {ocrError && <p className="text-red-400 text-xs mb-2">OCR Error: {ocrError}</p>} {/* OCR Error */}
+              {geminiError && <p className="text-red-400 text-xs mb-2">AI Error: {geminiError}</p>} {/* Gemini Error */}
               {ocrResultText && (
                 <div className="mt-4">
-                  <label htmlFor="ocrResult" className="block text-xs font-medium text-off-white/80 mb-1">Extracted Text (Review & Copy to fields above)</label>
+                  {/* Updated Label */}
+                  <label htmlFor="ocrResult" className="block text-xs font-medium text-off-white/80 mb-1">Extracted Text (AI attempted to extract details above)</label>
                   <textarea
                     id="ocrResult"
                     readOnly

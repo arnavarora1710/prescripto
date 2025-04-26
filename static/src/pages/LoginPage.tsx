@@ -110,20 +110,20 @@ const LoginPage: React.FC = () => {
         }
         setLoading(false);
       }
-       // Handle SIGNED_OUT or other events if needed
-       // else if (event === 'SIGNED_OUT') {
-       //   console.log("User signed out");
-       // }
+      // Handle SIGNED_OUT or other events if needed
+      // else if (event === 'SIGNED_OUT') {
+      //   console.log("User signed out");
+      // }
     };
 
     // Check initial session state
-     supabase.auth.getSession().then(({ data: { session } }) => {
-         if (session) {
-              console.log("Existing session found on page load.");
-              // Avoid triggering full check on load if user is just visiting the page while logged in
-              // handleAuthChange('SIGNED_IN', session); // <-- Might cause redirect loops if user is already on dashboard
-         }
-     });
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        console.log("Existing session found on page load.");
+        // Avoid triggering full check on load if user is just visiting the page while logged in
+        // handleAuthChange('SIGNED_IN', session); // <-- Might cause redirect loops if user is already on dashboard
+      }
+    });
 
     // Listen for auth changes
     const { data: authListener } = supabase.auth.onAuthStateChange(handleAuthChange);
@@ -156,10 +156,10 @@ const LoginPage: React.FC = () => {
       } else if (data.session) {
         // Auto-confirm is on or user already exists maybe?
         // onAuthStateChange will handle the redirect via SIGNED_IN event.
-         setMessage("Sign up successful! Redirecting...");
-         // The handleAuthChange listener will catch the SIGNED_IN event
+        setMessage("Sign up successful! Redirecting...");
+        // The handleAuthChange listener will catch the SIGNED_IN event
       } else {
-           setMessage("Sign up successful! Please check your email to confirm your account.");
+        setMessage("Sign up successful! Please check your email to confirm your account.");
       }
 
     } catch (err: any) {
@@ -248,29 +248,29 @@ const LoginPage: React.FC = () => {
             <div className="text-sm">
               <span className="block font-medium text-off-white/80 mb-2">I am signing up as a:</span>
               <div className="flex items-center space-x-6">
-                 <label className="flex items-center cursor-pointer">
-                    <input
-                        type="radio"
-                        name="role"
-                        value="patient"
-                        checked={role === 'patient'}
-                        onChange={() => setRole('patient')}
-                        className="form-radio h-4 w-4 text-electric-blue bg-dark-input border-off-white/40 focus:ring-electric-blue transition duration-150"
-                        disabled={loading}
-                    />
-                    <span className="ml-2 text-off-white/90">Patient</span>
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="radio"
+                    name="role"
+                    value="patient"
+                    checked={role === 'patient'}
+                    onChange={() => setRole('patient')}
+                    className="form-radio h-4 w-4 text-electric-blue bg-dark-input border-off-white/40 focus:ring-electric-blue transition duration-150"
+                    disabled={loading}
+                  />
+                  <span className="ml-2 text-off-white/90">Patient</span>
                 </label>
                 <label className="flex items-center cursor-pointer">
-                     <input
-                        type="radio"
-                        name="role"
-                        value="clinician"
-                        checked={role === 'clinician'}
-                        onChange={() => setRole('clinician')}
-                        className="form-radio h-4 w-4 text-electric-blue bg-dark-input border-off-white/40 focus:ring-electric-blue transition duration-150"
-                        disabled={loading}
-                    />
-                    <span className="ml-2 text-off-white/90">Clinician</span>
+                  <input
+                    type="radio"
+                    name="role"
+                    value="clinician"
+                    checked={role === 'clinician'}
+                    onChange={() => setRole('clinician')}
+                    className="form-radio h-4 w-4 text-electric-blue bg-dark-input border-off-white/40 focus:ring-electric-blue transition duration-150"
+                    disabled={loading}
+                  />
+                  <span className="ml-2 text-off-white/90">Clinician</span>
                 </label>
               </div>
             </div>
@@ -284,8 +284,8 @@ const LoginPage: React.FC = () => {
             >
               {loading ? (
                 <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-electric-blue group-hover:text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
               ) : isSignUp ? 'Sign Up' : 'Sign In'}
             </button>
@@ -295,12 +295,12 @@ const LoginPage: React.FC = () => {
         <div className="mt-6 text-center">
           <button
             onClick={() => {
-                setIsSignUp(!isSignUp);
-                setError(null);
-                setMessage(null);
-                // Reset fields when switching modes? Optional.
-                // setEmail('');
-                // setPassword('');
+              setIsSignUp(!isSignUp);
+              setError(null);
+              setMessage(null);
+              // Reset fields when switching modes? Optional.
+              // setEmail('');
+              // setPassword('');
             }}
             disabled={loading}
             className="inline-block cursor-pointer px-4 py-2 rounded-md border border-electric-blue/50 text-sm font-medium text-electric-blue transition duration-150 disabled:opacity-50 disabled:cursor-not-allowed"

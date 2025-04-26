@@ -31,7 +31,7 @@ const Impact: React.FC = () => {
       viewport={{ once: true, amount: 0.1 }}
     >
       {/* Subtle moving grid for dark background */}
-       <div
+      <div
         className="absolute inset-0 z-0 opacity-[0.05]"
         style={{
           backgroundImage: 'linear-gradient(#00ff00 1px, transparent 1px), linear-gradient(90deg, #00ff00 1px, transparent 1px)',
@@ -40,7 +40,7 @@ const Impact: React.FC = () => {
         }}
       >
         <style>
-        {`
+          {`
           @keyframes moveGrid {
             0% { background-position: 0 0; }
             100% { background-position: 120px 60px; } // Move diagonally
@@ -92,7 +92,7 @@ const Impact: React.FC = () => {
           >
             <div className="text-5xl font-bold mb-3 text-off-white/90 drop-shadow-md">✓</div> {/* Checkmark */}
             <p className="text-lg text-off-white font-semibold">Reduce Prescription Rework</p>
-             <p className="text-sm text-off-white/60 mt-2 leading-relaxed">Minimizes delays and rework caused by denied prescriptions due to coverage or safety issues.</p>
+            <p className="text-sm text-off-white/60 mt-2 leading-relaxed">Minimizes delays and rework caused by denied prescriptions due to coverage or safety issues.</p>
           </motion.div>
         </div>
         <motion.p

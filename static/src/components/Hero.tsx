@@ -14,9 +14,9 @@ const AnimatedBackground: React.FC = () => {
           maskImage: 'radial-gradient(ellipse at center, white 50%, transparent 100%)', // Fade out grid edges
         }}
       ></div>
-       {/* Overlay Scanline effect - can be combined with body scanline */}
-       {/* <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: 'linear-gradient(rgba(0, 255, 0, 1) 1px, transparent 1px)', backgroundSize: '1px 4px', animation: 'scanline 10s linear infinite' }}></div> */}
-      </div>
+      {/* Overlay Scanline effect - can be combined with body scanline */}
+      {/* <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: 'linear-gradient(rgba(0, 255, 0, 1) 1px, transparent 1px)', backgroundSize: '1px 4px', animation: 'scanline 10s linear infinite' }}></div> */}
+    </div>
   );
 };
 

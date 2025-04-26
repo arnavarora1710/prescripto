@@ -1,12 +1,12 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { FaLaptopMedical, FaUserCircle } from 'react-icons/fa'; // Import FaLaptopMedical and FaUserCircle icons
+import { FaLaptopMedical, FaUserCircle, FaSignInAlt, FaHeartbeat, FaSignOutAlt } from 'react-icons/fa'; // Import FaLaptopMedical, FaUserCircle, and FaSignInAlt icons
 import { Link, useNavigate } from 'react-router-dom'; // Import Link and useNavigate
 import { useAuth } from '../context/AuthContext'; // Import useAuth hook
 
-// Logo Icon - using FaLaptopMedical
+// Logo Icon - Removed animate-pulse
 const LogoIcon = () => (
-  <FaLaptopMedical className="h-6 w-6 text-electric-blue mr-2 group-hover:animate-pulse-glow" />
+  <FaHeartbeat className="h-7 w-7 text-electric-blue group-hover:text-terminal-green transition-colors duration-300" />
 );
 
 // Fallback Profile Icon - Takes size class as prop
@@ -21,9 +21,16 @@ const Navbar: React.FC = () => {
   const navItemVariants = {
     hover: {
       color: '#00ffff', // electric-blue
-      textShadow: '0 0 8px rgba(0, 255, 255, 0.7)', // Add glow effect
-      y: -1,
-      transition: { duration: 0.2, ease: "easeOut" }
+      textShadow: '0 0 10px rgba(0, 255, 255, 0.8)', // Brighter glow
+      scale: 1.05, // Slight scale up
+      y: -3, // Target y position, spring will create bounce
+      transition: {
+        duration: 0.3, // Overall duration hint (spring might adjust)
+        ease: "easeOut",
+        type: "spring", // Apply spring to all properties in hover
+        stiffness: 300,
+        damping: 15
+      }
     }
   };
 
@@ -52,13 +59,13 @@ const Navbar: React.FC = () => {
 
   return (
     <motion.nav
-      initial={{ y: -80, opacity: 0 }}
+      initial={{ y: -100, opacity: 0 }} // Start further up
       animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.5, ease: "easeOut", delay: 0.1 }}
-      // Dark background, subtle border using green accent (maybe rename to health-green conceptually)
-      className="fixed top-0 left-0 right-0 z-50 bg-dark-bg/80 backdrop-blur-sm shadow-md py-3 px-6 md:px-12 flex justify-between items-center border-b border-terminal-green/30"
+      transition={{ duration: 0.6, ease: "easeOut", delay: 0.2 }} // Slightly adjusted timing
+      // NEW STYLING: Centered, rounded rectangle navbar
+      className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-11/12 max-w-screen-lg bg-dark-card/80 backdrop-blur-lg shadow-xl rounded-xl py-3 px-6 md:px-10 flex justify-between items-center border border-electric-blue/30"
     >
-      {/* Logo Area */}
+      {/* Logo Area - Enhanced hover */}
       <Link
         to="/"
         className="group"
@@ -66,17 +73,16 @@ const Navbar: React.FC = () => {
       >
         <motion.div
           className="flex items-center"
-          whileHover={{ scale: 1.02 }}
+          whileHover={{ scale: 1.05, filter: 'drop-shadow(0 0 8px rgba(0, 255, 255, 0.5))' }} // Scale and add glow on hover
+          transition={{ type: "spring", stiffness: 300 }}
         >
+
           <LogoIcon />
-          <span className="text-xl font-semibold text-electric-blue group-hover:text-terminal-green transition-colors duration-200"> {/* Text color changes on group hover */}
-            Prescripto
-          </span>
         </motion.div>
       </Link>
 
-      {/* Navigation Links - Updated hrefs */}
-      <div className="hidden md:flex items-center space-x-8 text-sm font-medium text-off-white/80">
+      {/* Navigation Links - Apply new variants, improve base text style */}
+      <div className="hidden md:flex items-center space-x-10 text-base font-medium text-off-white tracking-wide"> {/* Brighter base color, add tracking */}
         <motion.a href="/#hero" onClick={scrollToTop} variants={navItemVariants} whileHover="hover" className="cursor-pointer">
           Overview
         </motion.a>
@@ -92,17 +98,17 @@ const Navbar: React.FC = () => {
       </div>
 
       {/* Auth Area: Profile Pic/Button or Login Button */}
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center space-x-3 md:space-x-4">
         {loading ? (
           <div className="h-8 w-20 bg-dark-input/50 rounded animate-pulse"></div> // Simple loading placeholder
         ) : profile ? (
-          <div className="relative group">
+          <div className="flex items-center space-x-3">
             <motion.button
               onClick={handleProfileClick}
-              className="rounded-full overflow-hidden border-2 border-electric-blue/50 hover:border-electric-blue focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-bg focus:ring-electric-blue transition-all duration-200"
-              whileHover={{ scale: 1.08 }}
+              className="rounded-full overflow-hidden border-2 border-electric-blue/40 hover:border-electric-blue/80 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-card focus:ring-electric-blue transition-all duration-300 hover:shadow-blue-glow-sm"
+              whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.95 }}
-              title={`Go to ${profile.role} ${profile.role === 'patient' ? 'profile' : 'dashboard'}`}
+              title={`Go to ${profile.role === 'patient' ? 'profile' : 'dashboard'}`}
             >
               {/* Check for non-null AND non-empty string */}
               {profile.profilePictureUrl && profile.profilePictureUrl !== '' ? (
@@ -117,25 +123,27 @@ const Navbar: React.FC = () => {
                 </div>
               )}
             </motion.button>
-            {/* Simple Dropdown/Tooltip on hover for Sign Out */}
-            <div className="absolute right-0 mt-1 w-32 bg-dark-card border border-off-white/10 rounded-md shadow-lg py-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none group-hover:pointer-events-auto">
-              <button
-                onClick={handleSignOut}
-                className="block w-full text-left px-4 py-2 text-sm text-off-white/80 hover:bg-electric-blue/10 hover:text-electric-blue"
-              >
-                Sign Out
-              </button>
-            </div>
+
+            <motion.button
+              onClick={handleSignOut}
+              className="flex items-center justify-center h-8 w-8 rounded-full text-off-white/60 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/50 transition-all duration-200 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-offset-dark-card focus:ring-red-500"
+              title="Sign Out"
+              whileHover={{ scale: 1.1, rotate: -5 }}
+              whileTap={{ scale: 0.9 }}
+            >
+              <FaSignOutAlt className="h-4 w-4" />
+            </motion.button>
           </div>
         ) : (
           <Link to="/login">
             <motion.button
-              className="bg-dark-card text-terminal-green font-medium py-2 px-5 rounded-sm text-sm border border-terminal-green/50 hover:bg-terminal-green/10 hover:shadow-[0_0_15px_rgba(0,255,0,0.5)] transition-all duration-300 cursor-pointer"
-              whileHover={{ scale: 1.05, y: -1 }}
+              className="group flex items-center space-x-2 bg-transparent text-electric-blue font-semibold py-2 px-5 rounded-lg text-sm border-2 border-electric-blue/70 hover:bg-electric-blue hover:text-dark-bg hover:border-electric-blue hover:shadow-[0_0_18px_rgba(0,255,255,0.6)] transition-all duration-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-card focus:ring-electric-blue"
+              whileHover={{ scale: 1.05, y: -2 }}
               whileTap={{ scale: 0.97 }}
-              transition={{ duration: 0.2 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
             >
-              Sign In
+              <FaSignInAlt className="transition-colors duration-300" />
+              <span>Sign In</span>
             </motion.button>
           </Link>
         )}

@@ -67,7 +67,7 @@ const Features: React.FC = () => {
                         className="bg-dark-bg p-8 rounded-sm border border-terminal-green/40 flex flex-col cursor-pointer h-full overflow-hidden shadow-lg shadow-terminal-green/10"
                     >
                         <div className="mb-5 flex-shrink-0 text-terminal-green">
-                            <AIBrainIcon /> 
+                            <AIBrainIcon />
                         </div>
                         <h3 className="text-xl font-semibold text-terminal-green mb-3 flex-shrink-0">Insurance-Aware Prescribing</h3>
                         <p className="text-off-white/70 text-sm leading-relaxed flex-grow">
@@ -81,11 +81,11 @@ const Features: React.FC = () => {
                     <motion.div
                         custom={1}
                         variants={featureVariants}
-                        whileHover={{...featureVariants.hover, boxShadow: "0 0 20px rgba(173, 216, 230, 0.5)"} /* Pastel Blue glow */}
+                        whileHover={{ ...featureVariants.hover, boxShadow: "0 0 20px rgba(173, 216, 230, 0.5)" } /* Pastel Blue glow */}
                         className="bg-dark-bg p-8 rounded-sm border border-electric-blue/40 flex flex-col cursor-pointer h-full overflow-hidden shadow-lg shadow-electric-blue/10"
                     >
                         <div className="mb-5 flex-shrink-0 text-electric-blue">
-                            <ShieldCheckIcon /> 
+                            <ShieldCheckIcon />
                         </div>
                         <h3 className="text-xl font-semibold text-electric-blue mb-3 flex-shrink-0">Allergy-Safe Suggestions</h3>
                         <p className="text-off-white/70 text-sm leading-relaxed flex-grow">
@@ -99,11 +99,11 @@ const Features: React.FC = () => {
                     <motion.div
                         custom={2}
                         variants={featureVariants}
-                         whileHover={{...featureVariants.hover, boxShadow: "0 0 20px rgba(211, 211, 211, 0.3)"} /* Pastel Gray glow */}
+                        whileHover={{ ...featureVariants.hover, boxShadow: "0 0 20px rgba(211, 211, 211, 0.3)" } /* Pastel Gray glow */}
                         className="bg-dark-bg p-8 rounded-sm border border-off-white/30 flex flex-col cursor-pointer h-full overflow-hidden shadow-lg shadow-white/5"
                     >
                         <div className="mb-5 flex-shrink-0 text-off-white/80">
-                            <IntegrationIcon /> 
+                            <IntegrationIcon />
                         </div>
                         <h3 className="text-xl font-semibold text-off-white/90 mb-3 flex-shrink-0">Explainable AI Summaries</h3>
                         <p className="text-off-white/70 text-sm leading-relaxed flex-grow">

@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Visit } from '../types/app';
 import { useAuth } from '../context/AuthContext';
-import { FaSpinner, FaArrowLeft } from 'react-icons/fa';
+import { FaSpinner, FaArrowLeft, FaCalendarAlt, FaUserMd, FaNotesMedical, FaRegCommentDots } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
+import { format } from 'date-fns';
 
 const PatientVisitsPage: React.FC = () => {
     const navigate = useNavigate();
@@ -32,9 +33,9 @@ const PatientVisitsPage: React.FC = () => {
                     const { data, error } = await supabase
                         .from('visits')
                         .select(`
-              *,
-              clinicians: clinician_id ( username )
-            `)
+                          *,
+                          clinicians: clinician_id ( id, username ) 
+                        `)
                         .eq('patient_id', patientId)
                         .order('visit_date', { ascending: false }); // No limit
 
@@ -61,13 +62,14 @@ const PatientVisitsPage: React.FC = () => {
 
     // Render Logic
     return (
-        <div className="container mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-12 text-off-white font-sans">
-            <div className="flex items-center justify-between mb-8">
+        <div className="container mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-12 text-off-white font-sans">
+            <div className="flex items-center justify-between mb-10">
                 <h1 className="text-3xl sm:text-4xl font-bold text-white">My Visit History</h1>
                 <button
                     onClick={() => navigate('/patient/profile')}
-                    className="flex items-center px-4 py-2 border border-border-color text-off-white/80 rounded-md hover:bg-dark-card transition text-sm font-medium">
-                    <FaArrowLeft className="mr-2 h-4 w-4" /> Back to Profile
+                    className="flex items-center px-4 py-2 border border-border-color text-off-white/80 rounded-md hover:bg-dark-card transition duration-200 text-sm font-medium group"
+                >
+                    <FaArrowLeft className="mr-2 h-4 w-4 group-hover:-translate-x-1 transition-transform duration-200" /> Back to Profile
                 </button>
             </div>
 
@@ -86,16 +88,32 @@ const PatientVisitsPage: React.FC = () => {
             {!loading && !error && (
                 <div className="bg-dark-card p-6 sm:p-8 rounded-xl shadow-lg border border-border-color animate-fade-in">
                     {visits.length > 0 ? (
-                        <ul className="space-y-6">
+                        <ul className="space-y-8">
                             {visits.map((visit) => (
-                                <li key={visit.id} className="border-b border-border-color/40 pb-5 last:border-b-0">
-                                    <p className="font-semibold text-base sm:text-lg text-pastel-blue mb-1">Visit on {new Date(visit.visit_date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p>
-                                    <p className="text-sm text-off-white/70 mb-2">Clinician: {visit.clinicians?.username || 'Unknown'}</p>
-                                    <p className="text-sm text-off-white/80 mb-2"><span className="font-medium text-off-white/90">Reason:</span> {visit.reason || 'N/A'}</p>
+                                <li key={visit.id} className="border-b border-border-color/40 pb-6 last:border-b-0">
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">
+                                        <p className="font-semibold text-base sm:text-lg text-pastel-blue flex items-center">
+                                            <FaCalendarAlt className="mr-2.5 h-4 w-4 text-pastel-blue/80" />
+                                            Visit on {format(new Date(visit.visit_date), 'PPPp')}
+                                        </p>
+                                        <p className="text-sm text-off-white/70 flex items-center">
+                                            <FaUserMd className="mr-2 h-4 w-4 text-pastel-lavender/70" />
+                                            Clinician: {visit.clinicians?.username || 'Unknown'}
+                                        </p>
+                                    </div>
+                                    <p className="text-sm text-off-white/80 mb-3 flex items-start">
+                                        <FaRegCommentDots className="mr-2 mt-0.5 h-4 w-4 text-pastel-lavender/70 flex-shrink-0" />
+                                        <span><span className="font-medium text-off-white/90">Reason:</span> {visit.reason || <span className="italic text-off-white/60">N/A</span>}</span>
+                                    </p>
                                     {visit.notes && (
-                                        <div className="mt-3 pt-3 border-t border-border-color/30">
-                                            <p className="text-xs font-medium text-pastel-lavender mb-1">Notes:</p>
-                                            <p className="text-sm text-off-white/80 italic whitespace-pre-wrap bg-dark-input/50 p-3 rounded-md border border-border-color/30">{visit.notes}</p>
+                                        <div className="mt-4 pt-4 border-t border-border-color/30">
+                                            <p className="text-xs font-medium text-pastel-lavender mb-1.5 flex items-center">
+                                                <FaNotesMedical className="mr-1.5 h-3.5 w-3.5" />
+                                                Visit Notes:
+                                            </p>
+                                            <p className="text-sm text-off-white/80 italic whitespace-pre-wrap bg-dark-input/50 p-3 rounded-md border border-border-color/30 font-mono text-xs leading-relaxed">
+                                                {visit.notes}
+                                            </p>
                                         </div>
                                     )}
                                 </li>

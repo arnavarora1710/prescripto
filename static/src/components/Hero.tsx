@@ -1,5 +1,5 @@
-import React, { useRef } from 'react';
-import { motion, useMotionValue, useTransform } from 'framer-motion';
+import React from 'react';
+import { motion } from 'framer-motion';
 
 // Simplified Background Effect - Scanlines & Subtle Grid
 const AnimatedBackground: React.FC = () => {

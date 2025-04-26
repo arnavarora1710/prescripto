@@ -54,11 +54,13 @@
 		-->
 
 		<!-- Added for loading .env file -->
+		<!-- Remove this redundant dependency 
 		<dependency>
 			<groupId>io.github.cdimascio</groupId>
 			<artifactId>dotenv-java</artifactId>
 			<version>3.0.0</version>
 		</dependency>
+		-->
 
 		<!-- Added for JSON handling (e.g., for Gemini API) -->
 		<dependency>
@@ -74,6 +76,10 @@
 			<artifactId>spring-boot-starter-data-jpa</artifactId>
 		</dependency>
 		-->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jpa</artifactId>
+		</dependency>
 
 		<!-- Added for PostgreSQL Database Connection -->
 		<!--
@@ -83,6 +89,18 @@
 			<scope>runtime</scope> 
 		</dependency>
 		-->
+		<dependency>
+			<groupId>org.postgresql</groupId>
+			<artifactId>postgresql</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+
+		<!-- Added for Lombok (reduces boilerplate code) -->
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+			<optional>true</optional> <!-- Optional: Lombok is mainly a compile-time tool -->
+		</dependency>
 
 		<!-- Dependency for loading .env variables into Spring Environment -->
 		<dependency>

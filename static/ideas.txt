@@ -1,0 +1,31 @@
+The idea is to build an application that patients and doctors can use.
+The application will allow doctors to recommend prescriptions to patients that is personalized
+based on their medical history, (allergies, etc.) and the patient's insurance plan.
+
+Java springboot backend:
+endpoits:
+/
+- this is just the home page that launces the react app
+/ocr 
+- this enpoint will take a base64 encoded image of an insurance card and return the text
+/csp
+- I wanted this endpoint to be a way of handling the logic of recommenidng prescriptions to patients
+Gettning optimal prescription -> Doctor can review/modify -> Send it back to the llm
+-> llm generates prescription (can we do this without llm? more deterministic like a constraint satisfication problem?)
+-> back to the doctor to review and approve->once doctor approves on the frontend,
+they can write notes to each medication.
+
+This goes to the llm again.
+The point is for the patients to click on a particular medication and see the reasoning behind why
+a particular medication or treatment was recommended.
+
+Possibly say that it was because in the past they mentioned something or whatever.
+
+Right now everything regarding the llm is in the frontend because it was hard to resolve the
+dependency issues with the backend.
+
+I want the csp endpoint to be the main endpoint that handles all the logic.
+
+How would you suggest I do this?
+
+Does the idea make sense or can you suggest modifications or improvements?

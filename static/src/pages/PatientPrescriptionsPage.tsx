@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Prescription } from '../types/app';
 import { useAuth } from '../context/AuthContext';
-import { FaDownload, FaSpinner, FaArrowLeft } from 'react-icons/fa';
+import { FaDownload, FaSpinner, FaArrowLeft, FaFilePrescription, FaUserMd, FaCalendarDay, FaPills, FaStickyNote, FaInfoCircle } from 'react-icons/fa';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useNavigate } from 'react-router-dom';
+import { format } from 'date-fns';
 
 const PatientPrescriptionsPage: React.FC = () => {
     const navigate = useNavigate();
@@ -36,7 +37,7 @@ const PatientPrescriptionsPage: React.FC = () => {
                         .from('prescriptions')
                         .select(`
               *,
-              clinicians: clinician_id ( username )
+              clinicians: clinician_id ( id, username )
             `)
                         .eq('patient_id', patientId)
                         .order('created_at', { ascending: false }); // No limit
@@ -148,58 +149,87 @@ const PatientPrescriptionsPage: React.FC = () => {
 
     // Render Logic
     return (
-        <div className="container mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-12 text-off-white font-sans">
-            <div className="flex items-center justify-between mb-8">
+        <div className="container mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-12 text-off-white font-sans">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-10">
                 <h1 className="text-3xl sm:text-4xl font-bold text-white">My Prescription History</h1>
                 <button
                     onClick={() => navigate('/patient/profile')}
-                    className="flex items-center px-4 py-2 border border-border-color text-off-white/80 rounded-md hover:bg-dark-card transition text-sm font-medium">
-                    <FaArrowLeft className="mr-2 h-4 w-4" /> Back to Profile
+                    className="flex items-center px-4 py-2 border border-border-color text-off-white/80 rounded-md hover:bg-dark-card transition duration-200 text-sm font-medium group"
+                >
+                    <FaArrowLeft className="mr-2 h-4 w-4 group-hover:-translate-x-1 transition-transform duration-200" /> Back to Profile
                 </button>
             </div>
 
+            {/* Loading State */}
             {loading && (
                 <div className="text-center py-10">
                     <FaSpinner className="animate-spin inline-block mr-3 h-6 w-6 text-pastel-blue" /> Loading prescriptions...
                 </div>
             )}
 
+            {/* Error State */}
             {error && (
                 <div className="bg-red-900/60 border border-red-700 text-red-200 px-4 py-3 rounded-lg text-center mb-6">
                     Error: {error}
                 </div>
             )}
 
+            {/* Content */}
             {!loading && !error && (
                 <div className="bg-dark-card p-6 sm:p-8 rounded-xl shadow-lg border border-border-color animate-fade-in">
                     {prescriptions.length > 0 ? (
-                        <ul className="space-y-6">
+                        <ul className="space-y-8">
                             {prescriptions.map((rx) => (
-                                <li key={rx.id} className="border-b border-border-color/40 pb-5 last:border-b-0">
-                                    <div className="flex justify-between items-start gap-4">
-                                        <div className="flex-grow mr-4">
-                                            <p className="font-semibold text-base sm:text-lg text-pastel-blue mb-1 break-words">{rx.medication}</p>
-                                            <p className="text-xs text-off-white/60 mb-2">Prescribed: {new Date(rx.created_at).toLocaleDateString()} by {rx.clinicians?.username || 'Unknown'}</p>
-                                            <div className="text-sm space-y-1 mb-2">
-                                                <p className="text-off-white/80"><span className="font-medium text-off-white/90">Dosage:</span> {rx.dosage || 'N/A'}</p>
-                                                <p className="text-off-white/80"><span className="font-medium text-off-white/90">Frequency:</span> {rx.frequency || 'N/A'}</p>
-                                            </div>
-                                            {rx.notes && (
-                                                <div className="mt-2 pt-2 border-t border-border-color/30">
-                                                    <p className="text-xs font-medium text-pastel-lavender mb-1">Notes:</p>
-                                                    <p className="text-sm text-off-white/80 italic whitespace-pre-wrap">{rx.notes}</p>
-                                                </div>
-                                            )}
-                                        </div>
+                                <li key={rx.id} className="border-b border-border-color/40 pb-6 last:border-b-0">
+                                    <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
+                                        {/* Prescription Title */}
+                                        <h2 className="font-semibold text-lg sm:text-xl text-pastel-blue flex items-center">
+                                            <FaFilePrescription className="mr-3 h-5 w-5 text-pastel-blue/80 flex-shrink-0" />
+                                            {rx.medication || 'Unnamed Prescription'}
+                                        </h2>
                                         {/* Download Button */}
                                         <button
                                             onClick={() => generatePrescriptionPdf(rx)}
-                                            className="flex items-center flex-shrink-0 px-3 py-1 mt-1 text-xs border border-electric-blue/60 text-electric-blue rounded-md hover:bg-electric-blue/10 transition"
+                                            className="flex items-center flex-shrink-0 px-3 py-1.5 text-xs border border-electric-blue/60 text-electric-blue rounded-md hover:bg-electric-blue/10 transition duration-200 active:scale-95 group whitespace-nowrap"
                                             title="Download Prescription PDF"
                                         >
-                                            <FaDownload className="mr-1.5" /> PDF
+                                            <FaDownload className="mr-1.5 h-3 w-3" /> Download PDF
                                         </button>
                                     </div>
+
+                                    {/* Prescription Details Grid */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                                        <div className="flex items-center text-off-white/80">
+                                            <FaCalendarDay className="mr-2.5 h-4 w-4 text-pastel-lavender/70 flex-shrink-0" />
+                                            <span><span className="font-medium text-off-white/90">Date Issued:</span> {format(new Date(rx.created_at), 'PPP')}</span>
+                                        </div>
+                                        <div className="flex items-center text-off-white/80">
+                                            <FaUserMd className="mr-2.5 h-4 w-4 text-pastel-lavender/70 flex-shrink-0" />
+                                            <span><span className="font-medium text-off-white/90">Prescriber:</span> {rx.clinicians?.username || 'Unknown'}</span>
+                                        </div>
+                                        <div className="flex items-center text-off-white/80">
+                                            <FaPills className="mr-2.5 h-4 w-4 text-pastel-lavender/70 flex-shrink-0" />
+                                            <span><span className="font-medium text-off-white/90">Dosage:</span> {rx.dosage || 'N/A'}</span>
+                                        </div>
+                                        <div className="flex items-center text-off-white/80">
+                                            <FaInfoCircle className="mr-2.5 h-4 w-4 text-pastel-lavender/70 flex-shrink-0" />
+                                            <span><span className="font-medium text-off-white/90">Frequency:</span> {rx.frequency || 'N/A'}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Prescription Notes */}
+                                    {rx.notes && (
+                                        <div className="mt-4 pt-4 border-t border-border-color/30">
+                                            <p className="text-xs font-medium text-pastel-lavender mb-1.5 flex items-center">
+                                                <FaStickyNote className="mr-1.5 h-3.5 w-3.5" />
+                                                Notes:
+                                            </p>
+                                            <p className="text-sm text-off-white/80 italic whitespace-pre-wrap bg-dark-input/50 p-3 rounded-md border border-border-color/30 font-mono text-xs leading-relaxed">
+                                                {rx.notes}
+                                            </p>
+                                        </div>
+                                    )}
                                 </li>
                             ))}
                         </ul>

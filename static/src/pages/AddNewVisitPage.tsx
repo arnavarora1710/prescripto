@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { Patient } from '../types/app'; // Patient type should include medical/insurance details
 import { useAuth } from '../context/AuthContext'; // Need clinician ID
-import { FaSearch, FaTimes, FaUserCircle, FaSpinner } from 'react-icons/fa'; // Added FaSpinner
+import { FaSearch, FaTimes, FaUserCircle, FaSpinner, FaArrowLeft, FaUserPlus, FaCheckCircle, FaExclamationTriangle } from 'react-icons/fa'; // Removed FaNotesMedical
 
 // Define a type for the full patient data needed for prescription generation
 type FullPatientData = Patient; // Use the existing Patient type which should include history/insurance
@@ -24,22 +24,27 @@ const AddNewVisitPage: React.FC = () => {
     const [loadingSearch, setLoadingSearch] = useState(false);
     const [loadingSubmit, setLoadingSubmit] = useState(false); // For saving visit
     const [loadingPrescription, setLoadingPrescription] = useState(false); // For generating prescription
-    const [error, setError] = useState<string | null>(null); // General/Visit error
+    const [searchError, setSearchError] = useState<string | null>(null); // Specific search error
+    const [submitError, setSubmitError] = useState<string | null>(null); // Specific submit/visit error
     const [errorPrescription, setErrorPrescription] = useState<string | null>(null); // Prescription specific error
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+    // Ref for focusing search input on load
+    const searchInputRef = useRef<HTMLInputElement>(null);
 
     // Debounced search effect
     useEffect(() => {
         // Clear results if search term is empty or a patient is selected
         if (!searchTerm.trim() || selectedPatient) {
             setSearchResults([]);
+            setSearchError(null); // Clear search error too
             setLoadingSearch(false);
             return;
         }
 
         // Debounce mechanism
         setLoadingSearch(true);
-        setError(null); // Clear previous errors on new search
+        setSearchError(null); // Clear previous search errors
         const timerId = setTimeout(async () => {
             try {
                 console.log(`Searching for patients like: ${searchTerm}`);
@@ -55,7 +60,7 @@ const AddNewVisitPage: React.FC = () => {
                 setSearchResults(data || []);
             } catch (err: any) {
                 console.error("Error searching patients:", err);
-                setError(`Failed to search patients: ${err.message}`);
+                setSearchError(`Failed to search patients: ${err.message}`);
                 setSearchResults([]); // Clear results on error
             } finally {
                 setLoadingSearch(false);
@@ -70,29 +75,36 @@ const AddNewVisitPage: React.FC = () => {
         setSelectedPatient(patient);
         setSearchTerm(''); // Clear search term after selection
         setSearchResults([]); // Clear search results
-        setError(null); // Clear any search errors
+        setSearchError(null); // Clear any search errors
         setErrorPrescription(null); // Clear prescription errors too
+        setSubmitError(null); // Clear submit errors
+        setSuccessMessage(null); // Clear success messages
+        setVisitReason('');
+        setVisitNotes('');
     };
 
     const handleClearSelection = () => {
         setSelectedPatient(null);
-        setError(null);
+        setSearchError(null);
+        setSubmitError(null);
         setErrorPrescription(null);
         setSuccessMessage(null);
         setVisitReason('');
         setVisitNotes('');
+        // Optionally focus search input again
+        searchInputRef.current?.focus();
     };
 
     const handleCreateVisit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!selectedPatient || !clinicianId || !visitReason.trim()) {
-            setError("Please select a patient and enter a visit reason.");
+            setSubmitError("Please select a patient and enter a visit reason.");
             return;
         }
 
         setLoadingSubmit(true);
         setLoadingPrescription(false); // Ensure prescription loading is false initially
-        setError(null);
+        setSubmitError(null);
         setErrorPrescription(null);
         setSuccessMessage(null);
 
@@ -243,7 +255,7 @@ Your prescription just needs to be a suggestion that a doctor would later review
             console.error("Error during visit creation or prescription generation/saving:", err);
             if (visitCreated && !loadingPrescription) {
                 // Error happened while fetching patient data or before Gemini call
-                setError(`Visit created, but failed before prescription generation: ${err.message}`);
+                setSubmitError(`Visit created, but failed before prescription generation: ${err.message}`);
                 // Optionally clear the partial success message
                 setSuccessMessage(null);
             } else if (visitCreated && loadingPrescription) {
@@ -253,7 +265,7 @@ Your prescription just needs to be a suggestion that a doctor would later review
                 setSuccessMessage(`Visit for ${selectedPatient.username || 'Patient'} created, but automatic prescription failed.`);
             } else {
                 // Error happened during visit creation itself
-                setError(`Failed to create visit: ${err.message}`);
+                setSubmitError(`Failed to create visit: ${err.message}`);
             }
         } finally {
             setLoadingSubmit(false);
@@ -263,102 +275,121 @@ Your prescription just needs to be a suggestion that a doctor would later review
 
     // Check if clinician profile is still loading or missing
     if (authLoading) {
-        return <div className="container mx-auto px-4 py-8 text-center text-white">Loading clinician data...</div>;
+        return <div className="container mx-auto px-4 py-16 text-center text-white"><FaSpinner className="animate-spin inline-block mr-3 h-6 w-6 text-pastel-blue" /> Loading clinician data...</div>;
     }
     if (!clinicianId) {
-        return <div className="container mx-auto px-4 py-8 text-center text-red-500">Error: Clinician profile not found or user is not a clinician. Cannot add visit.</div>;
+        return (
+            <div className="container mx-auto px-4 py-16 text-center">
+                <div className="bg-red-900/60 border border-red-700 text-red-200 px-6 py-4 rounded-lg inline-flex items-center">
+                    <FaExclamationTriangle className="mr-3 h-5 w-5" />
+                    <span>Error: Clinician profile not found or user is not a clinician. Cannot add visit.</span>
+                </div>
+            </div>
+        );
     }
 
 
     return (
-        <div className="container mx-auto px-6 lg:px-8 py-12 text-off-white font-sans max-w-4xl">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12 text-off-white font-sans max-w-3xl">
+            {/* Header */}
             <div className="flex justify-between items-center mb-10">
                 <button
                     onClick={() => navigate(-1)} // Go back to the previous page
-                    className="px-4 py-2 text-sm border border-border-color text-off-white/80 rounded-md hover:bg-dark-card transition duration-200"
+                    className="flex items-center px-4 py-2 border border-border-color text-off-white/80 rounded-md hover:bg-dark-card transition duration-200 text-sm font-medium group"
                 >
-                    &larr; Go Back
+                    <FaArrowLeft className="mr-2 h-4 w-4 group-hover:-translate-x-1 transition-transform duration-200" /> Go Back
                 </button>
                 <h1 className="text-3xl md:text-4xl font-bold text-white text-center flex-grow">Add New Visit</h1>
-                <div className="w-[calc(theme(spacing.4)*2+theme(fontSize.sm)*4)]"></div> {/* Spacer */}
+                {/* Spacer to balance back button */}
+                <div className="w-24"></div>
             </div>
 
             {/* Stage 1: Patient Search */}
             {!selectedPatient && (
-                <div className="bg-dark-card p-8 rounded-xl shadow-lg border border-border-color mb-8 animate-fade-in">
-                    <h2 className="text-2xl font-semibold text-white mb-6">1. Find Patient</h2>
+                <div className="bg-dark-card p-6 sm:p-8 rounded-xl shadow-lg border border-border-color mb-8 animate-fade-in transition-shadow hover:shadow-blue-glow-sm">
+                    <h2 className="text-xl sm:text-2xl font-semibold text-white mb-6 flex items-center">
+                        <FaSearch className="mr-3 text-pastel-blue" /> 1. Find Patient
+                    </h2>
                     <div className="relative">
                         <input
+                            ref={searchInputRef} // Assign ref
                             type="text"
                             placeholder="Search by patient username..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full px-4 py-3 pl-10 rounded-md bg-dark-input border border-off-white/20 text-white placeholder-off-white/50 focus:outline-none focus:ring-2 focus:ring-electric-blue focus:border-transparent transition duration-150"
+                            className="w-full px-4 py-2.5 pl-10 rounded-md bg-dark-input border border-border-color text-white placeholder-off-white/50 focus:outline-none focus:ring-2 focus:ring-electric-blue focus:border-transparent transition duration-150"
                             disabled={loadingSearch}
                         />
-                        <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-off-white/40" />
+                        <FaSearch className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-off-white/40 pointer-events-none" />
                     </div>
 
                     {/* Search Results */}
-                    {loadingSearch && <p className="text-center mt-4 text-off-white/70">Searching...</p>}
-                    {error && !loadingSearch && <p className="text-red-400 text-center mt-4">{error}</p>}
+                    <div className="mt-4 min-h-[80px]"> {/* Min height to prevent layout shift */}
+                        {loadingSearch && (
+                            <div className="flex justify-center items-center text-off-white/70 py-4">
+                                <FaSpinner className="animate-spin mr-2" /> Searching...
+                            </div>
+                        )}
+                        {searchError && !loadingSearch && (
+                            <p className="text-red-400 text-center py-4 px-2 text-sm">{searchError}</p>
+                        )}
 
-                    {searchResults.length > 0 && !loadingSearch && (
-                        <ul className="mt-4 space-y-2 max-h-60 overflow-y-auto border border-border-color rounded-md p-2 bg-dark-input/50">
-                            {searchResults.map(patient => (
-                                <li
-                                    key={patient.id}
-                                    onClick={() => handleSelectPatient(patient)}
-                                    className="flex items-center space-x-3 p-3 rounded-md hover:bg-electric-blue/20 cursor-pointer transition duration-150 group"
-                                >
-                                    {patient.profile_picture_url ? (
-                                        <img src={patient.profile_picture_url} alt="Profile" className="h-8 w-8 rounded-full object-cover flex-shrink-0 border border-transparent group-hover:border-electric-blue" />
-                                    ) : (
-                                        <FaUserCircle className="h-8 w-8 text-off-white/40 flex-shrink-0 group-hover:text-electric-blue" />
-                                    )}
-                                    <span className="text-off-white/90 group-hover:text-white font-medium">{patient.username || `ID: ${patient.id.substring(0, 8)}...`}</span>
-                                </li>
-                            ))}
-                        </ul>
-                    )}
-                    {!loadingSearch && searchTerm.trim() && searchResults.length === 0 && (
-                        <p className="text-center mt-4 text-off-white/60 italic">No patients found matching "{searchTerm}".</p>
-                    )}
+                        {searchResults.length > 0 && !loadingSearch && (
+                            <ul className="space-y-2 max-h-60 overflow-y-auto border border-border-color rounded-md p-2 bg-dark-input/50 custom-scrollbar">
+                                {searchResults.map(patient => (
+                                    <li
+                                        key={patient.id}
+                                        onClick={() => handleSelectPatient(patient)}
+                                        className="flex items-center space-x-3 p-3 rounded-md hover:bg-electric-blue/20 cursor-pointer transition duration-150 group"
+                                    >
+                                        {patient.profile_picture_url ? (
+                                            <img src={patient.profile_picture_url} alt="Profile" className="h-8 w-8 rounded-full object-cover flex-shrink-0 border border-border-color group-hover:border-electric-blue" />
+                                        ) : (
+                                            <FaUserCircle className="h-8 w-8 text-off-white/40 flex-shrink-0 group-hover:text-electric-blue" />
+                                        )}
+                                        <span className="text-off-white/90 group-hover:text-white font-medium">{patient.username || `ID: ${patient.id.substring(0, 8)}...`}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                        {!loadingSearch && searchTerm.trim() && searchResults.length === 0 && !searchError && (
+                            <p className="text-center py-4 text-off-white/60 italic">No patients found matching "{searchTerm}".</p>
+                        )}
+                    </div>
                 </div>
             )}
 
             {/* Stage 2: Visit Details */}
             {selectedPatient && (
-                <div className="bg-dark-card p-8 rounded-xl shadow-lg border border-border-color animate-fade-in">
-                    <div className="flex justify-between items-center mb-6 pb-4 border-b border-border-color">
-                        <h2 className="text-2xl font-semibold text-white">2. Enter Visit Details</h2>
-                        <button
-                            onClick={handleClearSelection}
-                            className="text-xs text-off-white/60 hover:text-red-400 flex items-center space-x-1 transition duration-150"
-                            title="Change Patient"
-                        >
-                            <FaTimes />
-                            <span>Change Patient</span>
-                        </button>
-                    </div>
-
-                    {/* Selected Patient Info */}
-                    <div className="flex items-center space-x-4 mb-8 p-4 bg-dark-input rounded-lg border border-border-color/50">
-                        {selectedPatient.profile_picture_url ? (
-                            <img src={selectedPatient.profile_picture_url} alt="Profile" className="h-12 w-12 rounded-full object-cover border-2 border-pastel-lavender" />
-                        ) : (
-                            <FaUserCircle className="h-12 w-12 text-off-white/40" />
-                        )}
-                        <div>
-                            <p className="text-lg font-semibold text-white">{selectedPatient.username || 'Selected Patient'}</p>
+                <div className="bg-dark-card p-6 sm:p-8 rounded-xl shadow-lg border border-border-color animate-fade-in transition-shadow hover:shadow-pastel-glow-sm">
+                    <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-6 pb-4 border-b border-border-color gap-2">
+                        <h2 className="text-xl sm:text-2xl font-semibold text-white flex items-center">
+                            <FaUserPlus className="mr-3 text-pastel-lavender" /> 2. Enter Visit Details For:
+                        </h2>
+                        {/* Selected Patient Info Inline */}
+                        <div className="flex items-center space-x-3 p-2 bg-dark-input rounded-lg border border-border-color/50 flex-shrink-0">
+                            {selectedPatient.profile_picture_url ? (
+                                <img src={selectedPatient.profile_picture_url} alt="Profile" className="h-8 w-8 rounded-full object-cover border border-pastel-lavender" />
+                            ) : (
+                                <FaUserCircle className="h-8 w-8 text-off-white/40" />
+                            )}
+                            <p className="text-base font-semibold text-white">{selectedPatient.username || 'Selected Patient'}</p>
+                            <button
+                                onClick={handleClearSelection}
+                                className="ml-2 text-xs text-off-white/60 hover:text-red-400 flex items-center space-x-1 transition duration-150 p-1 hover:bg-red-900/20 rounded-full"
+                                title="Change Patient"
+                            >
+                                <FaTimes />
+                            </button>
                         </div>
                     </div>
 
                     {/* Visit Form */}
                     <form onSubmit={handleCreateVisit} className="space-y-6">
+                        {/* Reason Input */}
                         <div>
                             <label htmlFor="visitReason" className="block text-sm font-medium text-off-white/80 mb-1">
-                                Reason for Visit <span className="text-red-500">*</span>
+                                Reason for Visit <span className="text-red-400">*</span>
                             </label>
                             <input
                                 id="visitReason"
@@ -366,12 +397,13 @@ Your prescription just needs to be a suggestion that a doctor would later review
                                 required
                                 value={visitReason}
                                 onChange={(e) => setVisitReason(e.target.value)}
-                                className="w-full px-4 py-2 rounded-md bg-dark-input border border-off-white/20 text-white placeholder-off-white/50 focus:outline-none focus:ring-2 focus:ring-electric-blue focus:border-transparent transition duration-150"
+                                className="w-full px-4 py-2.5 rounded-md bg-dark-input border border-border-color text-white placeholder-off-white/50 focus:outline-none focus:ring-2 focus:ring-electric-blue focus:border-transparent transition duration-150"
                                 placeholder="e.g., Follow-up, Checkup, Consultation"
                                 disabled={loadingSubmit || loadingPrescription} // Disable if submitting visit or generating Rx
                             />
                         </div>
 
+                        {/* Notes Input */}
                         <div>
                             <label htmlFor="visitNotes" className="block text-sm font-medium text-off-white/80 mb-1">
                                 Visit Notes (Diagnosis, Treatment Plan)
@@ -381,43 +413,77 @@ Your prescription just needs to be a suggestion that a doctor would later review
                                 rows={6}
                                 value={visitNotes}
                                 onChange={(e) => setVisitNotes(e.target.value)}
-                                className="w-full px-4 py-2 rounded-md bg-dark-input border border-off-white/20 text-white placeholder-off-white/50 focus:outline-none focus:ring-2 focus:ring-electric-blue focus:border-transparent transition duration-150"
+                                className="w-full px-4 py-2.5 rounded-md bg-dark-input border border-border-color text-white placeholder-off-white/50 focus:outline-none focus:ring-2 focus:ring-electric-blue focus:border-transparent transition duration-150 font-mono text-sm"
                                 placeholder="Enter observations, diagnosis, treatment plan for LLM..."
                                 disabled={loadingSubmit || loadingPrescription} // Disable if submitting visit or generating Rx
                             />
                         </div>
 
                         {/* Error/Success Messages */}
-                        {error && <p className="text-red-400 text-center text-sm py-2">{error}</p>}
-                        {errorPrescription && <p className="text-orange-400 text-center text-sm py-2">{errorPrescription}</p>}
-                        {successMessage && !errorPrescription && <p className="text-green-400 text-center text-sm py-2">{successMessage}</p>}
+                        <div className="min-h-[40px] space-y-2"> {/* Container for messages */}
+                            {submitError && (
+                                <div className="bg-red-900/50 border border-red-700 text-red-200 px-4 py-2 rounded-md text-center text-sm flex items-center justify-center gap-2">
+                                    <FaExclamationTriangle className="h-4 w-4" /> {submitError}
+                                </div>
+                            )}
+                            {errorPrescription && (
+                                <div className="bg-orange-900/60 border border-orange-700 text-orange-200 px-4 py-2 rounded-md text-center text-sm flex items-center justify-center gap-2">
+                                    <FaExclamationTriangle className="h-4 w-4" /> {errorPrescription}
+                                </div>
+                            )}
+                            {successMessage && !errorPrescription && (
+                                <div className="bg-green-900/60 border border-green-700 text-green-200 px-4 py-2 rounded-md text-center text-sm flex items-center justify-center gap-2">
+                                    <FaCheckCircle className="h-4 w-4" /> {successMessage}
+                                </div>
+                            )}
+                        </div>
+
                         {/* Show specific loading message for prescription generation */}
                         {loadingPrescription && (
-                            <div className="flex items-center justify-center text-sm text-pastel-blue py-2">
-                                <FaSpinner className="animate-spin mr-2" />
+                            <div className="flex items-center justify-center text-sm text-pastel-blue py-2 animate-pulse">
+                                <FaSpinner className="animate-spin h-5 w-5 text-electric-blue" />
                                 <span>Generating prescription...</span>
                             </div>
                         )}
 
+                        {/* Submit Button */}
                         <div>
                             <button
                                 type="submit"
-                                disabled={loadingSubmit || loadingPrescription || (!!successMessage && !errorPrescription)} // Disable if loading or full success
-                                className="w-full flex justify-center py-3 px-4 border border-electric-blue rounded-md shadow-sm text-sm font-medium text-electric-blue bg-transparent hover:bg-electric-blue hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-card focus:ring-electric-blue disabled:opacity-50 disabled:cursor-not-allowed transition duration-150"
+                                disabled={loadingSubmit || loadingPrescription || (!!successMessage && !errorPrescription && !submitError)} // Disable if loading or full success without errors
+                                className="w-full group flex justify-center items-center py-3 px-4 border border-electric-blue rounded-md shadow-sm text-sm font-medium text-electric-blue bg-transparent hover:bg-electric-blue hover:text-dark-bg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-card focus:ring-electric-blue disabled:opacity-50 disabled:cursor-not-allowed transition duration-200 ease-in-out active:scale-95"
                             >
                                 {loadingSubmit ? (
-                                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <svg className="animate-spin h-5 w-5 text-electric-blue" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                     </svg>
                                 ) : loadingPrescription ? (
-                                    <FaSpinner className="animate-spin -ml-1 mr-3 h-5 w-5" />
-                                ) : 'Save Visit & Generate Prescription'}
+                                    <FaSpinner className="animate-spin h-5 w-5 text-electric-blue" />
+                                ) : (
+                                    <span className="group-hover:scale-105 transition-transform duration-200 ease-in-out">Save Visit & Generate Prescription</span>
+                                )}
                             </button>
                         </div>
                     </form>
                 </div>
             )}
+            {/* Custom Scrollbar CSS */}
+            <style>{`
+             .custom-scrollbar::-webkit-scrollbar {
+                 width: 6px;
+             }
+             .custom-scrollbar::-webkit-scrollbar-track {
+                 background: transparent;
+             }
+             .custom-scrollbar::-webkit-scrollbar-thumb {
+                 background-color: rgba(187, 222, 251, 0.3); /* pastel-blue with transparency */
+                 border-radius: 3px;
+             }
+             .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                 background-color: rgba(187, 222, 251, 0.5);
+             }
+           `}</style>
         </div>
     );
 };

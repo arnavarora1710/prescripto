@@ -8,19 +8,15 @@
 /* Global base styles */
 @layer base {
   body {
-    /* @apply bg-dark-bg text-off-white font-mono; */
+    /* Static values based on tailwind.config.js */
     background-color: #0a0a0a;
-    /* Apply dark-bg directly */
+    /* dark-bg */
     color: #e0e0e0;
-    /* Apply off-white directly */
-    font-family: theme('fontFamily.mono');
-    /* Apply mono font family using theme() */
+    /* off-white */
+    font-family: 'Lato', system-ui, sans-serif;
+    /* sans */
 
-    /* Subtle scanline effect */
-    background-image: linear-gradient(rgba(0, 255, 0, 0.05) 1px, transparent 1px);
-    background-size: 1px 3px;
-    /* Adjust line thickness and spacing */
-    animation: scanline 15s linear infinite;
+    /* Subtle scanline effect - optional */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -31,13 +27,22 @@
   h4,
   h5,
   h6 {
-    /* @apply font-mono text-electric-blue; */
-    /* Comment out apply for headings */
-    font-family: theme('fontFamily.mono');
-    /* Apply font directly */
+    /* Static values based on tailwind.config.js */
+    font-family: "Source Code Pro", ui-monospace, Menlo, Monaco, "Cascadia Mono", "Segoe UI Mono", "Roboto Mono", "Oxygen Mono", "Ubuntu Monospace", "Fira Mono", "Droid Sans Mono", "Courier New", monospace;
+    /* mono */
     color: #00ffff;
-    /* Apply electric-blue directly */
-    /* Headers generally use electric blue */
+    /* electric-blue */
+  }
+
+  /* Specific elements needing mono font */
+  pre,
+  code,
+  kbd,
+  samp,
+  .font-mono {
+    /* Static value based on tailwind.config.js */
+    font-family: "Source Code Pro", ui-monospace, Menlo, Monaco, "Cascadia Mono", "Segoe UI Mono", "Roboto Mono", "Oxygen Mono", "Ubuntu Monospace", "Fira Mono", "Droid Sans Mono", "Courier New", monospace;
+    /* mono */
   }
 
   /* Smooth scrolling */

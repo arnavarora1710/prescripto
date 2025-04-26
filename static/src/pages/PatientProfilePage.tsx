@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Patient, JSONValue } from '../types/app';
 import { useAuth } from '../context/AuthContext';
-import { FaUserCircle, FaPlus, FaCamera, FaSpinner, FaEdit, FaCheckCircle, FaExclamationTriangle, FaFileMedicalAlt, FaCalendarCheck, FaSave, FaTimes } from 'react-icons/fa';
+import { FaUserCircle, FaPlus, FaCamera, FaSpinner, FaEdit, FaCheckCircle, FaExclamationTriangle, FaFileMedicalAlt, FaCalendarCheck, FaSave, FaTimes, FaFileImage, FaUserEdit, FaHistory, FaShieldAlt, FaTrash } from 'react-icons/fa';
 import Webcam from 'react-webcam';
 import { useNavigate } from 'react-router-dom';
 
@@ -48,7 +48,7 @@ const PatientProfilePage: React.FC = () => {
   // State for upload
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // --- State for Allergy Input ---
   const [allergyNameInput, setAllergyNameInput] = useState('');
@@ -65,8 +65,8 @@ const PatientProfilePage: React.FC = () => {
   const [insuranceUpdateError, setInsuranceUpdateError] = useState<string | null>(null);
   const [isEditingInsurance, setIsEditingInsurance] = useState(false); // <-- State for Edit Mode
 
-  const insuranceFileInputRef = React.useRef<HTMLInputElement>(null);
-  const webcamRef = React.useRef<Webcam>(null); // <-- Ref for webcam
+  const insuranceFileInputRef = useRef<HTMLInputElement>(null);
+  const webcamRef = useRef<Webcam>(null); // <-- Ref for webcam
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [ocrResultText, setOcrResultText] = useState<string | null>(null);
@@ -337,12 +337,12 @@ const PatientProfilePage: React.FC = () => {
   };
   // --- End Upload Logic ---
 
-  // --- Handle Add/Update Medical History Item (including Allergies) --- 
-  const handleAddHistoryItem = async () => {
-    const key = allergyNameInput.trim(); // Use name input as the key
-    const value = allergyDescInput.trim(); // Use description input as the value
+  // --- Handle Add/Update Medical History Item (Revised for Clarity) --- 
+  const handleAddUpdateHistoryItem = async () => {
+    const key = allergyNameInput.trim();
+    const value = allergyDescInput.trim();
 
-    if (!key) { // Require a key/name
+    if (!key) {
       setHistoryUpdateError("Item name/key cannot be empty.");
       return;
     }
@@ -353,22 +353,75 @@ const PatientProfilePage: React.FC = () => {
 
     setUpdatingHistory(true);
     setHistoryUpdateError(null);
-    setSuccessMessage(null); // Clear previous success
+    setSuccessMessage(null);
 
     try {
-      // Clone existing medical history or initialize if null/undefined/not an object
+      // Clone existing or initialize
       let currentHistory: Record<string, JSONValue> = {};
-      if (fullPatientData.medical_history &&
+      if (
+        fullPatientData.medical_history &&
         typeof fullPatientData.medical_history === 'object' &&
         !Array.isArray(fullPatientData.medical_history) &&
-        fullPatientData.medical_history !== null) {
+        fullPatientData.medical_history !== null
+      ) {
         currentHistory = JSON.parse(JSON.stringify(fullPatientData.medical_history));
       }
 
-      // Add/update the key-value pair directly in the history object
-      currentHistory[key] = value || 'N/A'; // Assign value, default to 'N/A' if empty
+      // Add/update the item
+      currentHistory[key] = value || 'Not Specified'; // Use 'Not Specified' if value is empty
 
-      // Update the database
+      // Update database
+      const { data: updatedPatient, error: updateError } = await supabase
+        .from('patients')
+        .update({ medical_history: currentHistory as JSONValue })
+        .eq('id', fullPatientData.id)
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
+      if (!updatedPatient) throw new Error("Update successful but no patient data returned.");
+
+      // Update local state and UI
+      setFullPatientData(updatedPatient);
+      setAllergyNameInput('');
+      setAllergyDescInput('');
+      setSuccessMessage(`Medical history item "${key}" updated successfully!`);
+      setTimeout(() => setSuccessMessage(null), 3000);
+
+    } catch (err: any) {
+      console.error("Error updating medical history:", err);
+      setHistoryUpdateError(`Failed to update history: ${err.message}`);
+    } finally {
+      setUpdatingHistory(false);
+    }
+  };
+
+  // --- Handle Delete Medical History Item --- 
+  const handleDeleteHistoryItem = async (keyToDelete: string) => {
+    if (!fullPatientData?.id || !fullPatientData.medical_history) {
+      setHistoryUpdateError("Cannot delete item: Patient or history data not loaded.");
+      return;
+    }
+    if (typeof fullPatientData.medical_history !== 'object' || Array.isArray(fullPatientData.medical_history)) {
+      setHistoryUpdateError("Cannot delete item: Invalid history format.");
+      return;
+    }
+
+    // Confirmation dialog
+    if (!window.confirm(`Are you sure you want to delete the history item "${keyToDelete}"?`)) {
+      return;
+    }
+
+    setUpdatingHistory(true); // Use the same loading state
+    setHistoryUpdateError(null);
+    setSuccessMessage(null);
+
+    try {
+      // Clone history and delete the key
+      const currentHistory = JSON.parse(JSON.stringify(fullPatientData.medical_history));
+      delete currentHistory[keyToDelete];
+
+      // Update database
       const { data: updatedPatient, error: updateError } = await supabase
         .from('patients')
         .update({ medical_history: currentHistory as JSONValue })
@@ -381,19 +434,16 @@ const PatientProfilePage: React.FC = () => {
 
       // Update local state
       setFullPatientData(updatedPatient);
-      setAllergyNameInput(''); // Clear the name input field
-      setAllergyDescInput(''); // Clear the description input field
-      setSuccessMessage("Medical history updated successfully!"); // Set success
-      setTimeout(() => setSuccessMessage(null), 3000); // Clear after 3s
+      setSuccessMessage(`History item "${keyToDelete}" deleted successfully!`);
+      setTimeout(() => setSuccessMessage(null), 3000);
 
     } catch (err: any) {
-      console.error("Error updating medical history:", err);
-      setHistoryUpdateError(`Failed to update history: ${err.message}`);
+      console.error("Error deleting medical history item:", err);
+      setHistoryUpdateError(`Failed to delete history item: ${err.message}`);
     } finally {
       setUpdatingHistory(false);
     }
   };
-  // --- End Handle Add History Item ---
 
   // --- Handle Save Insurance (Manual - Now called from Edit Mode) ---
   const handleSaveInsurance = async () => {
@@ -571,23 +621,32 @@ const PatientProfilePage: React.FC = () => {
   // --- End Camera Handling ---
 
   if (loading) {
-    return <div className="container mx-auto px-4 py-16 text-center text-white"><FaSpinner className="animate-spin inline-block mr-3 h-6 w-6" /> Loading patient data...</div>;
+    return <div className="container mx-auto px-4 py-16 text-center text-white"><FaSpinner className="animate-spin inline-block mr-3 h-6 w-6 text-pastel-blue" /> Loading patient data...</div>;
   }
 
   if (error) {
-    return <div className="container mx-auto px-4 py-16 text-center text-red-400">Error: {error}</div>;
+    return <div className="container mx-auto px-4 py-16 text-center"><div className="bg-red-900/60 border border-red-700 text-red-200 px-4 py-3 rounded-lg inline-block">Error: {error}</div></div>;
   }
 
-  // Use the fully fetched patient data for rendering checks and display
   if (!fullPatientData) {
-    return <div className="container mx-auto px-4 py-16 text-center text-white">No patient data found or user is not a patient.</div>;
+    return (
+      <div className="container mx-auto px-4 py-16 text-center text-white">
+        <p className="text-xl mb-4">Patient Not Found</p>
+        <p className="text-off-white/70 mb-6">No patient data found for this profile, or you may not be logged in as a patient.</p>
+        <button
+          onClick={() => navigate('/login')}
+          className="px-6 py-2 border border-electric-blue text-electric-blue rounded-md hover:bg-electric-blue hover:text-dark-bg transition duration-200">
+          Go to Login
+        </button>
+      </div>
+    );
   }
 
   // Use fullPatientData for rendering details now
   console.log("Rendering PatientProfilePage with fullPatientData:", fullPatientData);
   return (
-    <div className="container mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-12 text-off-white font-sans">
-      <h1 className="text-3xl sm:text-4xl font-bold text-white mb-10 text-center">Patient Information</h1>
+    <div className="container mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-12 text-off-white font-sans">
+      <h1 className="text-3xl sm:text-4xl font-bold text-white mb-10 text-center">My Patient Profile</h1>
 
       {/* --- Alert Banners --- */}
       <div className="mb-6 space-y-3">
@@ -629,154 +688,179 @@ const PatientProfilePage: React.FC = () => {
         )}
       </div>
 
-      {/* --- Single Column Layout --- */}
-      <div className="flex flex-col space-y-8">
-
-        {/* --- Profile Card --- */}
-        <div className="bg-dark-card p-6 rounded-xl shadow-lg border border-border-color flex flex-col sm:flex-row items-center text-center sm:text-left space-y-4 sm:space-y-0 sm:space-x-6 animate-fade-in transition duration-300 hover:shadow-pastel-glow-sm">
-          {/* Profile Picture & Change Button */}
-          <div className="flex-shrink-0 mb-4 sm:mb-0 relative group w-32 h-32 sm:w-24 sm:h-24">
-            {authProfile?.profilePictureUrl ? (
-              <img src={authProfile.profilePictureUrl} alt="Profile" className="w-full h-full rounded-full object-cover border-4 border-pastel-lavender/50 shadow-md" />
-            ) : (
-              <div className="w-full h-full rounded-full bg-dark-input flex items-center justify-center border-4 border-border-color text-off-white/30"><FaUserCircle className="h-16 w-16 sm:h-20 sm:h-20" /></div>
-            )}
-            <label className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 cursor-pointer">
-              <div className="text-center">
-                <FaEdit className="h-5 w-5 text-white mx-auto mb-1" />
-                <span className="text-white text-xs font-medium">{uploading ? 'Uploading...' : 'Change'}</span>
-              </div>
-              <input type="file" ref={fileInputRef} onChange={handleProfilePictureUpload} accept="image/png, image/jpeg, image/gif" className="sr-only" disabled={uploading} />
-            </label>
-          </div>
-          {/* Basic Info */}
-          <div className="flex-grow">
-            <p className="text-2xl font-semibold text-white mb-1">{fullPatientData.username || 'N/A'}</p>
-            <p className="text-sm text-off-white/60">
-              Joined: {fullPatientData.created_at ? new Date(fullPatientData.created_at).toLocaleDateString() : 'N/A'}
-            </p>
-          </div>
-          {/* Navigation Buttons */}
-          <div className="flex flex-col sm:flex-row gap-3 sm:ml-auto">
-            <button
-              onClick={() => navigate('/patient/prescriptions')}
-              className="flex items-center justify-center px-4 py-2 border border-electric-blue/60 text-electric-blue rounded-md hover:bg-electric-blue/10 transition text-sm font-medium whitespace-nowrap">
-              <FaFileMedicalAlt className="mr-2 h-4 w-4" /> View Prescriptions
-            </button>
-            <button
-              onClick={() => navigate('/patient/visits')}
-              className="flex items-center justify-center px-4 py-2 border border-pastel-lavender/60 text-pastel-lavender rounded-md hover:bg-pastel-lavender/10 transition text-sm font-medium whitespace-nowrap">
-              <FaCalendarCheck className="mr-2 h-4 w-4" /> View Visits
-            </button>
+      {/* --- Main Content Grid --- */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        {/* --- Left Column (Profile Card & Actions) --- */}
+        <div className="md:col-span-1 space-y-8">
+          {/* Profile Card */}
+          <div className="bg-dark-card p-6 rounded-xl shadow-lg border border-border-color flex flex-col items-center text-center animate-fade-in transition-shadow duration-300 hover:shadow-pastel-glow-sm">
+            {/* Profile Picture & Change Button */}
+            <div className="flex-shrink-0 mb-4 relative group w-32 h-32">
+              {authProfile?.profilePictureUrl ? (
+                <img src={authProfile.profilePictureUrl} alt="Profile" className="w-full h-full rounded-full object-cover border-4 border-pastel-lavender shadow-md transition-transform duration-300 group-hover:scale-105" />
+              ) : (
+                <div className="w-full h-full rounded-full bg-dark-input flex items-center justify-center border-4 border-border-color text-off-white/30 transition-colors duration-300 group-hover:border-pastel-lavender"><FaUserCircle className="h-20 w-20" /></div>
+              )}
+              <label className="absolute inset-0 flex items-center justify-center bg-black/70 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 cursor-pointer">
+                <div className="text-center">
+                  <FaUserEdit className="h-6 w-6 text-white mx-auto mb-1" />
+                  <span className="text-white text-xs font-medium">{uploading ? 'Uploading...' : 'Change Pic'}</span>
+                </div>
+                <input type="file" ref={fileInputRef} onChange={handleProfilePictureUpload} accept="image/png, image/jpeg, image/gif" className="sr-only" disabled={uploading} />
+              </label>
+            </div>
+            {/* Basic Info */}
+            <div className="flex-grow mb-4">
+              <p className="text-2xl font-semibold text-white mb-1">{fullPatientData.username || 'N/A'}</p>
+              <p className="text-sm text-off-white/60">
+                Member Since: {fullPatientData.created_at ? new Date(fullPatientData.created_at).toLocaleDateString() : 'N/A'}
+              </p>
+            </div>
+            {/* Navigation Buttons */}
+            <div className="w-full flex flex-col gap-3">
+              <button
+                onClick={() => navigate('/patient/prescriptions')}
+                className="w-full group flex items-center justify-center px-4 py-2.5 border border-electric-blue/60 text-electric-blue rounded-md hover:bg-electric-blue/10 hover:border-electric-blue transition duration-200 text-sm font-medium whitespace-nowrap"
+              >
+                <FaFileMedicalAlt className="mr-2 h-4 w-4 transition-colors duration-200 group-hover:text-electric-blue" /> View Prescriptions
+              </button>
+              <button
+                onClick={() => navigate('/patient/visits')}
+                className="w-full group flex items-center justify-center px-4 py-2.5 border border-pastel-lavender/60 text-pastel-lavender rounded-md hover:bg-pastel-lavender/10 hover:border-pastel-lavender transition duration-200 text-sm font-medium whitespace-nowrap"
+              >
+                <FaCalendarCheck className="mr-2 h-4 w-4 transition-colors duration-200 group-hover:text-pastel-lavender" /> View Visits
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* --- Medical & Insurance Card --- */}
-        <div className="bg-dark-card p-6 sm:p-8 rounded-xl shadow-lg border border-border-color animate-fade-in" style={{ animationDelay: '0.1s' }}>
-          <h2 className="text-xl sm:text-2xl font-semibold text-white border-b border-border-color pb-3 mb-6">Medical History & Insurance</h2>
+        {/* --- Right Column (Medical & Insurance) --- */}
+        <div className="md:col-span-2 space-y-8">
+          {/* --- Medical History Card --- */}
+          <div className="bg-dark-card p-6 sm:p-8 rounded-xl shadow-lg border border-border-color animate-fade-in" style={{ animationDelay: '0.1s' }}>
+            <div className="flex items-center justify-between mb-6 pb-3 border-b border-border-color">
+              <h2 className="text-xl sm:text-2xl font-semibold text-white flex items-center">
+                <FaHistory className="mr-3 text-pastel-lavender" /> Medical History & Allergies
+              </h2>
+            </div>
 
-          {/* --- Medical History Section (Content remains the same) --- */}
-          <div className="mb-8">
-            {/* ... (Existing Medical History display and input form) ... */}
-            <h3 className="text-lg font-semibold text-pastel-lavender mb-4">Medical History & Allergies</h3>
-            {/* Display */}
-            <div className="text-sm bg-dark-input p-4 rounded-lg border border-border-color/50 space-y-3 mb-6 min-h-[60px]">
+            {/* Display Medical History */}
+            <div className="text-sm space-y-3 mb-6 min-h-[60px]">
               {fullPatientData.medical_history &&
                 typeof fullPatientData.medical_history === 'object' &&
                 fullPatientData.medical_history !== null &&
                 !Array.isArray(fullPatientData.medical_history) &&
                 Object.keys(fullPatientData.medical_history).length > 0 ? (
-                Object.entries(fullPatientData.medical_history).map(([key, value]) => (
-                  <dl key={key} className="flex flex-col sm:flex-row sm:justify-between sm:items-start py-1 border-b border-border-color/20 last:border-b-0">
-                    <dt className="font-medium capitalize text-off-white/80 w-full sm:w-1/3 mr-2 flex-shrink-0 break-words">{key.replace(/_/g, ' ')}:</dt>
-                    <dd className="text-off-white text-left sm:text-right flex-grow break-words mt-1 sm:mt-0">{typeof value === 'string' ? value : JSON.stringify(value)}</dd>
-                  </dl>
-                ))
+                <ul className="space-y-3">
+                  {Object.entries(fullPatientData.medical_history).map(([key, value]) => (
+                    <li key={key} className="flex justify-between items-start p-3 bg-dark-input/40 rounded-lg border border-border-color/30 group">
+                      <div>
+                        <p className="font-medium capitalize text-off-white/90 break-words">{key.replace(/_/g, ' ')}</p>
+                        <p className="text-off-white/70 break-words mt-0.5">{String(value) || <span className="italic">No details</span>}</p>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteHistoryItem(key)}
+                        disabled={updatingHistory}
+                        className="ml-4 p-1.5 text-off-white/40 hover:text-red-500 hover:bg-red-900/30 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 flex-shrink-0"
+                        title={`Delete item: ${key}`}
+                      >
+                        <FaTrash className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               ) : (
-                <p className="text-sm text-off-white/60 italic py-2">No medical history or allergy information provided.</p>
+                <p className="text-sm text-off-white/60 italic text-center py-4">No medical history or allergy information provided.</p>
               )}
             </div>
-            {/* Input */}
-            <div className="mt-4 p-4 bg-dark-input/30 border border-border-color/30 rounded-lg space-y-3">
-              <label className="block text-sm font-medium text-off-white/90">
-                Add/Update History Item (Condition, Allergy, etc.)
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input
-                  id="allergyNameInput"
-                  type="text"
-                  value={allergyNameInput}
-                  onChange={(e) => setAllergyNameInput(e.target.value)}
-                  placeholder="Item Name (e.g., Penicillin)"
-                  className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-electric-blue focus:ring-1 focus:ring-electric-blue text-sm transition duration-150"
-                  disabled={updatingHistory}
-                />
-                <input
-                  id="allergyDescInput"
-                  type="text"
-                  value={allergyDescInput}
-                  onChange={(e) => setAllergyDescInput(e.target.value)}
-                  placeholder="Description/Details (e.g., Rash)"
-                  className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-electric-blue focus:ring-1 focus:ring-electric-blue text-sm transition duration-150"
-                  disabled={updatingHistory}
-                />
-              </div>
-              <div className="flex justify-end pt-1">
-                <button
-                  onClick={handleAddHistoryItem}
-                  disabled={updatingHistory || !allergyNameInput.trim()}
-                  className="flex items-center justify-center px-4 py-2 min-w-[120px] bg-electric-blue/80 hover:bg-electric-blue text-white rounded-md text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition duration-150 shadow"
-                >
-                  {updatingHistory ? <FaSpinner className="animate-spin mr-2 h-4 w-4" /> : <FaPlus className="mr-1.5 h-4 w-4" />} Add / Update
-                </button>
+
+            {/* Add/Update History Form */}
+            <div className="mt-6 pt-6 border-t border-border-color/50">
+              <h3 className="text-md font-semibold text-pastel-lavender mb-3">Add / Update History Item</h3>
+              <div className="p-4 bg-dark-input/30 border border-border-color/30 rounded-lg space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <input
+                    id="allergyNameInput"
+                    type="text"
+                    value={allergyNameInput}
+                    onChange={(e) => setAllergyNameInput(e.target.value)}
+                    placeholder="Item Name (e.g., Penicillin Allergy)"
+                    className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-electric-blue focus:ring-1 focus:ring-electric-blue text-sm transition duration-150 placeholder:text-off-white/50"
+                    disabled={updatingHistory}
+                  />
+                  <input
+                    id="allergyDescInput"
+                    type="text"
+                    value={allergyDescInput}
+                    onChange={(e) => setAllergyDescInput(e.target.value)}
+                    placeholder="Description/Details (Optional)"
+                    className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-electric-blue focus:ring-1 focus:ring-electric-blue text-sm transition duration-150 placeholder:text-off-white/50"
+                    disabled={updatingHistory}
+                  />
+                </div>
+                <div className="flex justify-end pt-1">
+                  <button
+                    onClick={handleAddUpdateHistoryItem}
+                    disabled={updatingHistory || !allergyNameInput.trim()}
+                    className="flex items-center justify-center px-4 py-2 min-w-[130px] bg-electric-blue/80 hover:bg-electric-blue text-dark-bg rounded-md text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition duration-150 shadow active:scale-95"
+                  >
+                    {updatingHistory ? <FaSpinner className="animate-spin mr-2 h-4 w-4" /> : <FaPlus className="mr-1.5 h-4 w-4" />} Add / Update
+                  </button>
+                </div>
               </div>
             </div>
-          </div>{/* End Medical History Section */}
+          </div>{/* End Medical History Card */}
 
-          {/* --- Insurance Details Section (Content remains the same) --- */}
-          <div className="pt-8 border-t border-border-color">
-            {/* ... (Existing Insurance display, input, and OCR sections) ... */}
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-pastel-lavender">Insurance Details</h3>
+          {/* --- Insurance Details Card --- */}
+          <div className="bg-dark-card p-6 sm:p-8 rounded-xl shadow-lg border border-border-color animate-fade-in" style={{ animationDelay: '0.2s' }}>
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-border-color">
+              <h2 className="text-xl sm:text-2xl font-semibold text-white flex items-center">
+                <FaShieldAlt className="mr-3 text-pastel-blue" /> Insurance Details
+              </h2>
               {/* --- Edit Button --- */}
               {!isEditingInsurance && (
                 <button
                   onClick={() => {
-                    // Pre-fill state with current saved data before entering edit mode
                     const details = fullPatientData.insurance_details as Record<string, string> | null;
                     setInsuranceProvider(details?.provider || '');
                     setPolicyNumber(details?.policy_number || '');
                     setGroupNumber(details?.group_number || '');
-                    setInsuranceUpdateError(null); // Clear any previous edit errors
+                    setInsuranceUpdateError(null);
                     setIsEditingInsurance(true);
                   }}
                   className="flex items-center text-sm text-pastel-blue hover:text-electric-blue disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 p-1 rounded"
-                  disabled={updatingInsurance || geminiLoading || !!geminiInitializationError} // Disable if Gemini not initialized
+                  disabled={updatingInsurance || geminiLoading || !!geminiInitializationError}
+                  title="Edit Insurance Details"
                 >
-                  <FaEdit className="mr-1 h-3 w-3" /> Edit
+                  <FaEdit className="mr-1 h-3.5 w-3.5" /> Edit
                 </button>
               )}
             </div>
 
-            {/* --- STEP 6: Conditional Rendering for Display/Edit --- */}
+            {/* --- Conditional Rendering for Display/Edit --- */}
             {!isEditingInsurance ? (
               // --- Display View --- 
-              <div className="text-sm bg-dark-input p-4 rounded-lg border border-border-color/50 space-y-3 mb-6 min-h-[60px]">
+              <div className="text-sm space-y-3 mb-6 min-h-[60px]">
                 {fullPatientData.insurance_details &&
                   typeof fullPatientData.insurance_details === 'object' &&
                   fullPatientData.insurance_details !== null &&
-                  Object.keys(fullPatientData.insurance_details).filter(k => k !== 'ocr_raw_text').length > 0 ? (
-                  Object.entries(fullPatientData.insurance_details).map(([key, value]) => (
-                    // --- Condition to hide raw OCR text --- 
-                    key !== 'ocr_raw_text' && value && (
-                      <dl key={key} className="flex flex-col sm:flex-row sm:justify-between sm:items-start py-1 border-b border-border-color/20 last:border-b-0">
-                        <dt className="font-medium capitalize text-off-white/80 w-full sm:w-1/3 mr-2 flex-shrink-0 break-words">{key.replace(/_/g, ' ')}:</dt>
-                        <dd className="text-off-white text-left sm:text-right flex-grow break-words mt-1 sm:mt-0">{String(value) || 'N/A'}</dd>
-                      </dl>
-                    )
-                  ))
+                  !Array.isArray(fullPatientData.insurance_details) &&
+                  Object.keys(fullPatientData.insurance_details).filter(k => {
+                    const details = fullPatientData.insurance_details as Record<string, JSONValue>;
+                    return k !== 'ocr_raw_text' && details[k];
+                  }).length > 0 ? (
+                  <ul className="space-y-3">
+                    {Object.entries(fullPatientData.insurance_details).map(([key, value]) => (
+                      key !== 'ocr_raw_text' && value && (
+                        <li key={key} className="flex justify-between items-start p-3 bg-dark-input/40 rounded-lg border border-border-color/30">
+                          <span className="font-medium capitalize text-off-white/80 w-1/3 mr-2 flex-shrink-0 break-words">{key.replace(/_/g, ' ')}:</span>
+                          <span className="text-off-white text-right flex-grow break-words">{String(value)}</span>
+                        </li>
+                      )
+                    ))}
+                  </ul>
                 ) : (
-                  <p className="text-sm text-off-white/60 italic py-2">No insurance details provided. Use OCR below or click 'Edit' to add manually.</p>
+                  <p className="text-sm text-off-white/60 italic text-center py-4">No insurance details provided. Use OCR below or click 'Edit' to add manually.</p>
                 )}
               </div>
             ) : (
@@ -787,7 +871,7 @@ const PatientProfilePage: React.FC = () => {
                   <input
                     id="insuranceProviderEdit"
                     type="text"
-                    value={insuranceProvider} // Use state variable
+                    value={insuranceProvider}
                     onChange={(e) => setInsuranceProvider(e.target.value)}
                     placeholder="Insurance Company Name"
                     className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-electric-blue focus:ring-1 focus:ring-electric-blue text-sm transition duration-150"
@@ -800,7 +884,7 @@ const PatientProfilePage: React.FC = () => {
                     <input
                       id="policyNumberEdit"
                       type="text"
-                      value={policyNumber} // Use state variable
+                      value={policyNumber}
                       onChange={(e) => setPolicyNumber(e.target.value)}
                       placeholder="Policy or Member ID"
                       className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-electric-blue focus:ring-1 focus:ring-electric-blue text-sm transition duration-150"
@@ -812,7 +896,7 @@ const PatientProfilePage: React.FC = () => {
                     <input
                       id="groupNumberEdit"
                       type="text"
-                      value={groupNumber} // Use state variable
+                      value={groupNumber}
                       onChange={(e) => setGroupNumber(e.target.value)}
                       placeholder="Group Number"
                       className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-electric-blue focus:ring-1 focus:ring-electric-blue text-sm transition duration-150"
@@ -825,15 +909,15 @@ const PatientProfilePage: React.FC = () => {
                 )}
                 <div className="flex justify-end pt-2 space-x-3">
                   <button
-                    onClick={() => setIsEditingInsurance(false)} // Cancel hides the edit view
+                    onClick={() => setIsEditingInsurance(false)}
                     disabled={updatingInsurance}
                     className="flex items-center justify-center px-4 py-2 min-w-[100px] bg-gray-600 hover:bg-gray-700 text-white rounded-md text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition duration-150 shadow"
                   >
                     <FaTimes className="mr-1.5 h-4 w-4" /> Cancel
                   </button>
                   <button
-                    onClick={handleSaveInsuranceAndExitEditMode} // Use helper to save and exit
-                    disabled={updatingInsurance || !insuranceProvider.trim() || !policyNumber.trim()} // Basic validation
+                    onClick={handleSaveInsuranceAndExitEditMode}
+                    disabled={updatingInsurance || !insuranceProvider.trim() || !policyNumber.trim()}
                     className="flex items-center justify-center px-4 py-2 min-w-[120px] bg-pastel-blue/80 hover:bg-pastel-blue text-dark-bg rounded-md text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition duration-150 shadow"
                   >
                     {updatingInsurance ? <FaSpinner className="animate-spin mr-2 h-4 w-4" /> : <FaSave className="mr-1.5 h-4 w-4" />} Save Changes
@@ -841,18 +925,17 @@ const PatientProfilePage: React.FC = () => {
                 </div>
               </div>
             )}
-            {/* --- End Conditional Rendering --- */}
 
-            {/* OCR Section (Remains largely the same, just below the display/edit block) */}
+            {/* --- OCR Section --- */}
             <div className="mt-6 pt-6 border-t border-border-color/50">
-              <h4 className="text-md font-semibold text-pastel-lavender/90 mb-3">Scan Card to Auto-Fill Details</h4>
-              {/* Add warning if Gemini is not configured */}
+              <h3 className="text-md font-semibold text-pastel-lavender/90 mb-3">Scan Card / Upload Image</h3>
+              {/* Gemini Warning */}
               {geminiInitializationError && (
                 <p className="text-orange-400 text-xs mb-3 flex items-center">
-                  <FaExclamationTriangle className="mr-1.5 h-4 w-4" /> {geminiInitializationError}
+                  <FaExclamationTriangle className="mr-1.5 h-4 w-4" /> {geminiInitializationError} (AI parsing disabled)
                 </p>
               )}
-              {/* Camera View (Conditional) */}
+              {/* Camera View */}
               {showCamera && (
                 <div className="fixed inset-0 bg-black/80 flex flex-col items-center justify-center z-50 p-4 animate-fade-in">
                   <Webcam audio={false} ref={webcamRef} screenshotFormat="image/jpeg" width={640} height={480} videoConstraints={{ width: 1280, height: 720, facingMode: facingMode }} className="rounded-lg border-4 border-electric-blue mb-4 max-w-full h-auto shadow-lg" />
@@ -862,42 +945,39 @@ const PatientProfilePage: React.FC = () => {
                   </div>
                 </div>
               )}
-              {/* OCR Buttons (when camera off) */}
+              {/* OCR Buttons */}
               {!showCamera && (
-                <div className="flex items-center flex-wrap gap-3 mb-3">
+                <div className="flex items-center flex-wrap gap-3 mb-4">
                   <input type="file" accept="image/*" ref={insuranceFileInputRef} onChange={handleInsuranceOcrUpload} className="hidden" disabled={ocrLoading || showCamera || !!geminiInitializationError} />
-                  <button onClick={() => insuranceFileInputRef.current?.click()} disabled={ocrLoading || showCamera || !!geminiInitializationError} className="flex items-center px-4 py-2 bg-dark-input hover:bg-dark-card border border-border-color/70 text-off-white/90 rounded-md text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition duration-150">
-                    {ocrLoading && !showCamera ? <FaSpinner className="animate-spin mr-2" /> : <FaCamera className="mr-1.5" />} Choose Image
+                  <button onClick={() => insuranceFileInputRef.current?.click()} disabled={ocrLoading || showCamera || !!geminiInitializationError} className="flex items-center px-4 py-2 bg-dark-input hover:bg-dark-card border border-border-color/70 text-off-white/90 rounded-md text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 active:scale-95">
+                    {ocrLoading ? <FaSpinner className="animate-spin mr-2 h-4 w-4" /> : <FaFileImage className="mr-1.5 h-4 w-4" />} Upload Image
                   </button>
-                  <button onClick={() => handleOpenCamera('environment')} disabled={ocrLoading || showCamera || !!geminiInitializationError} className="flex items-center px-4 py-2 bg-dark-input hover:bg-dark-card border border-border-color/70 text-off-white/90 rounded-md text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition duration-150">
-                    <FaCamera className="mr-1.5" /> Scan with Camera
+                  <button onClick={() => handleOpenCamera('environment')} disabled={ocrLoading || showCamera || !!geminiInitializationError} className="flex items-center px-4 py-2 bg-dark-input hover:bg-dark-card border border-border-color/70 text-off-white/90 rounded-md text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 active:scale-95">
+                    <FaCamera className="mr-1.5 h-4 w-4" /> Use Camera
                   </button>
                 </div>
               )}
               {/* OCR Status/Result */}
-              {ocrLoading && <p className="text-sm text-pastel-blue mb-2 flex items-center"><FaSpinner className="animate-spin mr-2" /> Processing OCR...</p>}
-              {geminiLoading && <p className="text-sm text-pastel-blue mb-2 flex items-center"><FaSpinner className="animate-spin mr-2" /> Analyzing text with AI...</p>} {/* Gemini Loading */}
-              {ocrError && <p className="text-red-400 text-xs mb-2">OCR Error: {ocrError}</p>} {/* OCR Error */}
-              {geminiError && <p className="text-red-400 text-xs mb-2">AI Error: {geminiError}</p>} {/* Gemini Error */}
-              {ocrResultText && (
+              <div className="min-h-[20px]">
+                {ocrLoading && <p className="text-sm text-pastel-blue mb-2 flex items-center animate-pulse"><FaSpinner className="animate-spin mr-2" /> Processing OCR...</p>}
+                {geminiLoading && <p className="text-sm text-pastel-blue mb-2 flex items-center animate-pulse"><FaSpinner className="animate-spin mr-2" /> Analyzing text with AI...</p>}
+              </div>
+              {ocrResultText && !isEditingInsurance && (
                 <div className="mt-4">
-                  {/* Updated Label */}
-                  <label htmlFor="ocrResult" className="block text-xs font-medium text-off-white/80 mb-1">Extracted Text (AI attempted to extract details above)</label>
+                  <label htmlFor="ocrResult" className="block text-xs font-medium text-off-white/80 mb-1">Extracted Text (AI attempted to parse details)</label>
                   <textarea
                     id="ocrResult"
                     readOnly
                     value={ocrResultText}
                     rows={5}
-                    className="w-full px-3 py-2 rounded-lg bg-dark-input border border-border-color/70 text-off-white/90 text-xs font-mono focus:ring-1 focus:ring-electric-blue focus:border-electric-blue"
+                    className="w-full px-3 py-2 rounded-lg bg-dark-input border border-border-color/70 text-off-white/90 text-xs font-mono focus:ring-1 focus:ring-electric-blue focus:border-electric-blue opacity-80"
                   />
                 </div>
               )}
             </div>{/* End OCR Section */}
-          </div>{/* End Insurance Details Section */}
-        </div>{/* End Medical & Insurance Card */}
-
-      </div>{/* End Single Column Layout */}
-
+          </div>{/* End Insurance Details Card */}
+        </div>{/* End Right Column */}
+      </div>{/* End Main Content Grid */}
     </div>
   );
 };

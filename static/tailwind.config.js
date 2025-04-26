@@ -11,9 +11,9 @@ module.exports = {
         'terminal-green': '#00ff00', // Classic green
         'electric-blue': '#00ffff', // Cyan/Electric blue
         'off-white': '#e0e0e0', // For body text
-        'dark-card': '#1f1f1f', // Slightly lighter dark card
-        'dark-input': '#2a2a2a', // Darker input background
-        'border-color': '#444444', // Slightly lighter border
+        'dark-card': '#1a1a1a', // Slightly darker card for better contrast
+        'dark-input': '#252525', // Darker input background
+        'border-color': '#383838', // Subtly lighter border
         // Pastels
         'pastel-lavender': '#d1c4e9',
         'pastel-mint': '#c8e6c9',
@@ -22,13 +22,14 @@ module.exports = {
       },
       fontFamily: {
         'mono': ['"Source Code Pro"', 'ui-monospace', 'Menlo', 'Monaco', '"Cascadia Mono"', '"Segoe UI Mono"', '"Roboto Mono"', '"Oxygen Mono"', '"Ubuntu Monospace"', '"Fira Mono"', '"Droid Sans Mono"', '"Courier New"', 'monospace'],
-        'sans': ['Lato', 'system-ui', 'sans-serif'],
+        'sans': ['Lato', 'system-ui', 'sans-serif'], // Keep Lato for sans-serif text
       },
       animation: {
         'scanline': 'scanline 10s linear infinite',
         'glitch': 'glitch 1.5s infinite steps(8)',
-        'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
-        'fade-in': 'fadeIn 0.5s ease-out forwards',
+        'pulse-glow': 'pulse-glow 2.5s ease-in-out infinite', // Slightly slower pulse
+        'fade-in': 'fadeIn 0.6s ease-out forwards', // Slightly slower fade-in
+        'subtle-pulse': 'subtlePulse 3s infinite ease-in-out', // Add subtle pulse for specific elements
       },
       keyframes: {
         scanline: {
@@ -48,19 +49,31 @@ module.exports = {
           '90%': { transform: 'translate(0)', opacity: '0.9' },
         },
         'pulse-glow': {
-          '0%, 100%': { opacity: 0.7, filter: 'blur(2px)' },
-          '50%': { opacity: 1, filter: 'blur(4px)' },
+          '0%, 100%': { opacity: 0.7, filter: 'blur(3px)' }, // Slightly stronger blur
+          '50%': { opacity: 1, filter: 'blur(6px)' }, // Stronger glow peak
         },
         fadeIn: {
-          '0%': { opacity: 0, transform: 'translateY(10px)' },
+          '0%': { opacity: 0, transform: 'translateY(15px)' }, // Slightly more movement
           '100%': { opacity: 1, transform: 'translateY(0)' },
-        }
+        },
+        subtlePulse: { // Keyframe for subtle pulse
+          '0%, 100%': { transform: 'scale(1)' },
+          '50%': { transform: 'scale(1.02)' },
+        },
       },
       boxShadow: {
-        'pastel-glow-sm': '0 0 8px 1px rgba(209, 196, 233, 0.3)', // Subtle lavender glow
-        'pastel-glow-md': '0 0 15px 3px rgba(209, 196, 233, 0.3)',
+        'pastel-glow-sm': '0 0 10px 2px rgba(209, 196, 233, 0.35)', // Enhanced lavender glow
+        'pastel-glow-md': '0 0 18px 4px rgba(209, 196, 233, 0.35)',
+        'blue-glow-sm': '0 0 10px 2px rgba(0, 255, 255, 0.3)', // Electric blue glow
+        'blue-glow-md': '0 0 18px 4px rgba(0, 255, 255, 0.3)',
       },
+      backgroundImage: { // Add subtle gradients
+        'dark-gradient': 'linear-gradient(180deg, #1a1a1a 0%, #0f0f0f 100%)',
+        'blue-highlight-gradient': 'linear-gradient(90deg, rgba(0, 255, 255, 0.1) 0%, rgba(0, 255, 255, 0) 100%)',
+      }
     },
   },
-  plugins: [],
+  plugins: [
+    require('@tailwindcss/forms'), // Ensure forms plugin is added for better default styles
+  ],
 } 

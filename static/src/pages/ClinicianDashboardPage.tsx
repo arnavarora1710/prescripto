@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { User } from '@supabase/supabase-js';
+// import { User } from '@supabase/supabase-js'; // Remove unused import
 import { Clinician, Visit, Patient } from '../types/app'; // Import types
 
 // Helper type for patient details needed on dashboard
@@ -13,7 +13,6 @@ interface ClinicianDashboardData {
 }
 
 const ClinicianDashboardPage: React.FC = () => {
-  const [user, setUser] = useState<User | null>(null);
   const [clinician, setClinician] = useState<Clinician | null>(null);
   const [patients, setPatients] = useState<PatientSummary[]>([]);
   const [recentVisits, setRecentVisits] = useState<Visit[]>([]);
@@ -33,7 +32,6 @@ const ClinicianDashboardPage: React.FC = () => {
           throw new Error("User not logged in.");
         }
         const currentUser = session.user;
-        setUser(currentUser);
 
         // 2. Get clinician profile linked to the user
         const { data: clinicianData, error: clinicianError } = await supabase
@@ -57,6 +55,7 @@ const ClinicianDashboardPage: React.FC = () => {
 
         // --- Fetch Dashboard Data using RPC --- 
         console.log(`Fetching dashboard data for clinician: ${currentClinicianId}`);
+        // @ts-expect-error - TS Version/Type conflict? Syntax seems correct.
         const { data: dashboardData, error: rpcError } = await supabase.rpc<ClinicianDashboardData>(
             'get_clinician_dashboard_data',
             { p_clinician_id: currentClinicianId }

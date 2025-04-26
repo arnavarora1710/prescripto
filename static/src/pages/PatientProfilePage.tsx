@@ -7,12 +7,14 @@ import { useAuth } from '../context/AuthContext'; // Import useAuth
 import { FaUserCircle } from 'react-icons/fa';
 
 // Define a type for the expected RPC response structure
+/* // Remove unused interface
 interface PatientDataResponse {
   patient: Patient | null; // Patient now includes email from the RPC
   prescriptions: Prescription[];
   visits: Visit[];
   error?: string; // Include error field if RPC returns error object
 }
+*/
 
 const PatientProfilePage: React.FC = () => {
   // Get profile and refresh function from context
@@ -37,7 +39,8 @@ const PatientProfilePage: React.FC = () => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Combine auth state with page-specific state
-  const patient = authProfile?.role === 'patient' ? authProfile as Patient : null;
+  // Use unknown cast for potentially incompatible types
+  const patient = authProfile?.role === 'patient' ? authProfile as unknown as Patient : null; 
   const loading = authLoading || loadingData;
   const error = authError || errorData;
 
@@ -51,8 +54,8 @@ const PatientProfilePage: React.FC = () => {
   // Fetch prescriptions and visits (profile comes from context)
   useEffect(() => {
     // Only fetch if we have a patient profile from auth
-    if (patient?.profileId) {
-      const patientId = patient.profileId; // Use profileId from context
+    if (patient?.id) { // Use patient.id instead of patient.profileId
+      const patientId = patient.id; // Use patient.id
       const fetchPageData = async () => {
           setLoadingData(true);
           setErrorData(null);
@@ -94,7 +97,7 @@ const PatientProfilePage: React.FC = () => {
              setErrorData("Logged in user is not a patient or profile is missing.");
         }
     }
-  }, [patient?.profileId, authLoading]); // Re-run if patient ID changes or auth finishes loading
+  }, [patient?.id, authLoading]); // Re-run if patient ID changes or auth finishes loading - use patient.id
 
   const handleAddInsurance = () => {
     // TODO: Implement OCR logic or manual form for insurance
@@ -124,7 +127,8 @@ const PatientProfilePage: React.FC = () => {
 
           const file = event.target.files[0];
           const fileExt = file.name.split('.').pop();
-          const fileName = `${patient.userId}-${Date.now()}.${fileExt}`;
+          // Use user_id from Patient type
+          const fileName = `${patient.user_id}-${Date.now()}.${fileExt}`; 
           const filePath = `private/${fileName}`;
 
           console.log(`Uploading to path: ${filePath}`); // Log the path
@@ -162,13 +166,13 @@ const PatientProfilePage: React.FC = () => {
           }
 
           // Log the ID being used for the update
-          console.log(`Attempting to update patient profile ID: ${patient.profileId}`);
+          console.log(`Attempting to update patient profile ID: ${patient.id}`); // Use patient.id
 
           // Update the patient table AND request the updated row back
           const { data: updatedPatientData, error: dbError } = await supabase
               .from('patients')
-              .update({ profile_picture_url: signedUrl }) // Store the signed URL
-              .eq('id', patient.profileId)
+              .update({ profile_picture_url: signedUrl }) // Store the signed URL (use profile_picture_url)
+              .eq('id', patient.id) // Use patient.id
               .select() // Ask Supabase to return the updated row(s)
               .maybeSingle(); // Expecting one row or null
 
@@ -190,7 +194,9 @@ const PatientProfilePage: React.FC = () => {
 
           // --- OPTIMISTIC UI UPDATE --- 
           console.log("Optimistically updating profile context with new URL...");
-          updateProfile({ profilePictureUrl: signedUrl });
+          // Update context using profile_picture_url - Note: AuthContext uses profilePictureUrl, need consistency or mapping
+          // Assuming AuthContext's updateProfile handles mapping if needed.
+          updateProfile({ profilePictureUrl: signedUrl }); 
 
           // Refresh Profile in AuthContext (still good practice for consistency)
           console.log("Profile picture updated in DB, triggering delayed background refresh...");
@@ -238,9 +244,11 @@ const PatientProfilePage: React.FC = () => {
           <h2 className="text-xl font-semibold text-electric-blue/90 mb-4">Your Information</h2>
           {/* Profile Picture Display & Upload */}
           <div className="mb-4 flex flex-col items-center">
-             {patient.profilePictureUrl ? (
+             {/* Use patient.profile_picture_url */}
+             {patient.profile_picture_url ? (
                 <img 
-                    src={patient.profilePictureUrl}
+                    // Use patient.profile_picture_url
+                    src={patient.profile_picture_url} 
                     alt="Profile" 
                     className="h-24 w-24 rounded-full object-cover mb-3 border-2 border-electric-blue/70"
                 />

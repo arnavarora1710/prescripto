@@ -3,6 +3,7 @@ export interface UserProfile {
     id: string;       // Patient or Clinician table ID
     user_id: string;  // Corresponds to auth.users.id
     email?: string;   // Fetched separately from auth.users if needed
+    profile_picture_url?: string | null; // Add profile picture URL
     created_at: string;
     updated_at: string;
 }

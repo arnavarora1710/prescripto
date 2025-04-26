@@ -39,58 +39,53 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Function to fetch profile data (using .then syntax)
-  const fetchProfileData = (userId: string): Promise<void> => {
-    console.log(`AuthProvider: fetchProfileData (.then) called for user ${userId}`);
-    return new Promise((resolve, reject) => {
-        supabase.rpc(
+  // Function to fetch profile data (refactored to async/await)
+  const fetchProfileData = async (userId: string): Promise<void> => {
+    console.log(`AuthProvider: fetchProfileData (async) called for user ${userId}`);
+    try {
+        const { data: profileData, error: rpcError } = await supabase.rpc(
             'get_user_role_and_profile_test',
             { test_user_id: userId }
-        )
-        .then(({ data: profileData, error: rpcError }) => {
-            // Log the raw data received from the RPC
-            console.log("AuthProvider: Raw RPC Result (.then):", JSON.stringify(profileData)); 
-            console.log("AuthProvider: RPC Error (.then):", rpcError);
+        );
 
-            // console.log("AuthProvider: fetchProfileData RPC Result (.then)", { profileData, rpcError }); // Keep original log commented out or remove
-            if (rpcError) {
-                console.error("Error in fetchProfileData (.then):", rpcError);
-                setError(rpcError.message || "Failed to fetch profile.");
-                setProfile(null);
-                reject(rpcError); // Reject the promise on error
+        console.log("AuthProvider: Raw RPC Result (async):", JSON.stringify(profileData)); 
+        console.log("AuthProvider: RPC Error (async):", rpcError);
+
+        if (rpcError) {
+            console.error("Error in fetchProfileData (async):", rpcError);
+            setError(rpcError.message || "Failed to fetch profile.");
+            setProfile(null);
+            // Propagate the error so callers know it failed
+            throw rpcError; 
+        }
+
+        if (profileData && profileData.length > 0) {
+            const fetchedProfile = profileData[0];
+            if (fetchedProfile.role && fetchedProfile.profile_id) {
+                console.log("AuthProvider: Profile data being set:", JSON.stringify(fetchedProfile));
+                setProfile({
+                    profileId: fetchedProfile.profile_id,
+                    userId: userId,
+                    role: fetchedProfile.role,
+                    // Use the correct property name from the type
+                    profilePictureUrl: fetchedProfile.profile_picture_url, 
+                    email: fetchedProfile.user_email
+                });
+                // Resolve implicitly by not throwing
                 return;
             }
-
-            if (profileData && profileData.length > 0) {
-                const fetchedProfile = profileData[0];
-                if (fetchedProfile.role && fetchedProfile.profile_id) {
-                    // Log the specific profile object being used to set state
-                    console.log("AuthProvider: Profile data being set:", JSON.stringify(fetchedProfile));
-                    // console.log("AuthProvider: Setting profile state with:", fetchedProfile); // Keep original log commented out or remove
-                    setProfile({
-                        profileId: fetchedProfile.profile_id,
-                        userId: userId,
-                        role: fetchedProfile.role,
-                        profilePictureUrl: fetchedProfile.profile_picture_url,
-                        email: fetchedProfile.user_email
-                    });
-                    resolve();
-                    return;
-                }
-            }
-            // Profile not found or incomplete
-            console.log("AuthProvider: Setting profile state to null (not found/incomplete).");
-            setProfile(null);
-            resolve();
-        })
-        .catch(err => {
-            console.error("Error in fetchProfileData (.catch):", err);
-            setError(err.message || "Failed to fetch profile.");
-            console.log("AuthProvider: Setting profile state to null (catch block).");
-            setProfile(null);
-            reject(err);
-        });
-    });
+        }
+        // Profile not found or incomplete
+        console.log("AuthProvider: Setting profile state to null (not found/incomplete).");
+        setProfile(null);
+    } catch (err: any) {
+        console.error("Error fetching profile data (catch block):", err);
+        // Ensure error state is set even if the error didn't come from RPC
+        setError(err.message || "Failed to fetch profile."); 
+        setProfile(null);
+        // Re-throw the error so callers know it failed
+        throw err;
+    }
   };
 
   useEffect(() => {

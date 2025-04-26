@@ -1,70 +1,77 @@
-import React from 'react';
-import { motion } from 'framer-motion';
+import React, { useRef } from 'react';
+import { motion, useMotionValue, useTransform } from 'framer-motion';
 
-// Removed the separate HeroVisual component
+// Simplified Background Effect - Scanlines & Subtle Grid
+const AnimatedBackground: React.FC = () => {
+  return (
+    <div className="absolute inset-0 z-0 overflow-hidden">
+      {/* Subtle grid using pseudo-elements might be better handled in CSS, but this adds another layer */}
+      <div
+        className="absolute inset-0 opacity-[0.03]"
+        style={{
+          backgroundImage: 'linear-gradient(#00ff00 1px, transparent 1px), linear-gradient(90deg, #00ff00 1px, transparent 1px)',
+          backgroundSize: '70px 70px',
+          maskImage: 'radial-gradient(ellipse at center, white 50%, transparent 100%)', // Fade out grid edges
+        }}
+      ></div>
+       {/* Overlay Scanline effect - can be combined with body scanline */}
+       {/* <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: 'linear-gradient(rgba(0, 255, 0, 1) 1px, transparent 1px)', backgroundSize: '1px 4px', animation: 'scanline 10s linear infinite' }}></div> */}
+      </div>
+  );
+};
 
 const Hero: React.FC = () => {
   return (
     <motion.section
       id="hero"
-      className="relative bg-gradient-to-br from-cyan-100 via-blue-200 to-indigo-300 pt-32 pb-20 md:pt-40 md:pb-28 min-h-[85vh] flex items-center overflow-hidden"
+      className="relative bg-dark-bg pt-32 pb-20 md:pt-40 md:pb-28 min-h-[85vh] flex items-center overflow-hidden"
     >
-      {/* Background Shapes Layer */}
-      <div className="absolute inset-0 z-0 overflow-hidden">
-            <motion.div
-                className="absolute -top-20 -left-40 w-96 h-96 bg-blue-300 rounded-full filter blur-3xl opacity-40 animate-blob"
-                style={{ animationDelay: '0s' }}
-            />
-            <motion.div
-                className="absolute -bottom-20 -right-20 w-80 h-80 bg-purple-300 rounded-full filter blur-3xl opacity-40 animate-blob"
-                style={{ animationDelay: '3s' }}
-            />
-             <motion.div
-                className="absolute top-1/3 right-1/4 w-72 h-72 bg-cyan-200 rounded-lg filter blur-3xl opacity-30 animate-blob transform rotate-45"
-                style={{ animationDelay: '6s' }}
-            />
-      </div>
+      <AnimatedBackground />
 
       {/* Content Layer */}
       <div className="container mx-auto px-6 relative z-10">
         <div className="max-w-xl md:max-w-2xl text-center md:text-left">
           <motion.h1
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
-            className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 mb-6 leading-tight drop-shadow-sm"
+            initial={{ opacity: 0, y: 50, filter: 'blur(5px)' }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            transition={{ duration: 0.9, delay: 0.2, ease: [0.2, 0.8, 0.2, 1] }}
+            className="text-4xl sm:text-5xl lg:text-6xl font-bold text-electric-blue mb-6 leading-tight cursor-default"
+            style={{ textShadow: '0 0 10px rgba(0, 255, 255, 0.4)' }}
           >
-            Smarter Prescriptions, Healthier Patients.
+            Personalized Prescriptions,
+            <br />
+            Intelligently Optimized.
           </motion.h1>
           <motion.p
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.4, ease: "easeOut" }}
-            className="text-lg md:text-xl text-gray-700 mb-10 leading-relaxed"
+            transition={{ duration: 0.8, delay: 0.4, ease: [0.2, 0.8, 0.2, 1] }}
+            className="text-lg md:text-xl text-off-white/80 mb-10 leading-relaxed"
           >
-            Prescripto empowers clinicians with AI-driven insights to optimize medication choices, enhance safety, and streamline the prescribing process for better patient care.
+            Prescripto AI assists doctors in real-time, generating insurance-aware, allergen-safe, and cost-effective treatment plans explained clearly by LLM intelligence.
           </motion.p>
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.6, ease: "easeOut" }}
+            transition={{ duration: 0.8, delay: 0.6, ease: [0.2, 0.8, 0.2, 1] }}
             className="flex flex-col sm:flex-row justify-center md:justify-start items-center space-y-4 sm:space-y-0 sm:space-x-5"
           >
+            {/* Buttons reflecting key actions/info */}
             <motion.a
               href="#features"
-              className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-8 rounded-md shadow-md text-base transition duration-300 ease-in-out transform hover:-translate-y-0.5"
-              whileHover={{ scale: 1.03, boxShadow: "0px 8px 20px rgba(37, 99, 235, 0.3)" }}
+              className="bg-dark-card text-electric-blue font-medium py-3 px-8 rounded-sm border border-electric-blue/50 hover:bg-electric-blue/10 hover:shadow-[0_0_15px_rgba(0,255,255,0.5)] transition-all duration-300 text-base transform hover:-translate-y-1 cursor-pointer"
+              whileHover={{ scale: 1.03, boxShadow: "0 0 15px rgba(0, 255, 255, 0.5)" }}
               whileTap={{ scale: 0.98 }}
             >
-              Discover Features
+              See Key Features
             </motion.a>
             <motion.button
-              onClick={() => console.log('Request Demo clicked - Placeholder')}
-              className="bg-white text-blue-600 font-medium py-3 px-8 rounded-md shadow-sm border border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition duration-300 ease-in-out text-base transform hover:-translate-y-0.5"
-              whileHover={{ scale: 1.03, boxShadow: "0px 8px 15px rgba(0, 0, 0, 0.08)" }}
+              onClick={() => console.log('Learn More clicked - Placeholder')}
+              className="bg-dark-card text-terminal-green font-medium py-3 px-8 rounded-sm border border-terminal-green/50 hover:bg-terminal-green/10 hover:shadow-[0_0_15px_rgba(0,255,0,0.5)] transition-all duration-300 text-base transform hover:-translate-y-1 cursor-pointer"
+              whileHover={{ scale: 1.03, boxShadow: "0 0 15px rgba(0, 255, 0, 0.5)" }}
               whileTap={{ scale: 0.98 }}
             >
-              Request a Demo
+              Learn More
             </motion.button>
           </motion.div>
         </div>

@@ -3,44 +3,55 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Optional: Add any global base styles below */
-body {
-  /* Add explicit basic styles for testing */
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  color: #1f2937;
-  /* text-gray-800 */
-  background-color: #ffffff;
-  /* bg-white */
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* Global base styles */
+@layer base {
+  body {
+    /* @apply bg-dark-bg text-off-white font-mono; */
+    background-color: #0a0a0a;
+    /* Apply dark-bg directly */
+    color: #e0e0e0;
+    /* Apply off-white directly */
+    font-family: theme('fontFamily.mono');
+    /* Apply mono font family using theme() */
+
+    /* Subtle scanline effect */
+    background-image: linear-gradient(rgba(0, 255, 0, 0.05) 1px, transparent 1px);
+    background-size: 1px 3px;
+    /* Adjust line thickness and spacing */
+    animation: scanline 15s linear infinite;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    /* @apply font-mono text-electric-blue; */
+    /* Comment out apply for headings */
+    font-family: theme('fontFamily.mono');
+    /* Apply font directly */
+    color: #00ffff;
+    /* Apply electric-blue directly */
+    /* Headers generally use electric blue */
+  }
+
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
 }
 
-/* Smooth scrolling */
-html {
-  scroll-behavior: smooth;
-}
+/* Removed old blob animation */
 
-/* Blob animation for Hero section */
+/* Example utility class for a glitch effect on hover */
 @layer utilities {
-  .animate-blob {
-    animation: blob 7s infinite;
-  }
-}
-
-@keyframes blob {
-  0% {
-    transform: translate(0px, 0px) scale(1);
-  }
-
-  33% {
-    transform: translate(30px, -50px) scale(1.1);
-  }
-
-  66% {
-    transform: translate(-20px, 20px) scale(0.9);
-  }
-
-  100% {
-    transform: translate(0px, 0px) scale(1);
+  .hover-glitch:hover {
+    /* @apply animate-glitch; */
+    /* Comment out last apply */
+    /* You could try applying animation directly, but it uses keyframes which might also fail */
+    /* animation: glitch 1.5s infinite steps(8); */
   }
 }

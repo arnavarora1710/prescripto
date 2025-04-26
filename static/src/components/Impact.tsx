@@ -16,7 +16,7 @@ const impactVariants = {
   hover: {
     y: -6,
     scale: 1.03,
-    boxShadow: "0 0 25px rgba(173, 216, 230, 0.5)", // Default pastel blue glow
+    boxShadow: "0 0 25px rgba(175, 238, 238, 0.4)", // Consistent Pastel Turquoise Glow
     transition: { type: "spring", stiffness: 250, damping: 15 }
   }
 };
@@ -65,7 +65,7 @@ const Impact: React.FC = () => {
           <motion.div
             custom={0}
             variants={impactVariants}
-            whileHover={{...impactVariants.hover, boxShadow: "0 0 25px rgba(152, 251, 152, 0.4)"} /* Pastel Green glow */}
+            whileHover="hover"
             className="bg-dark-card/70 backdrop-blur-sm p-8 rounded-sm shadow-lg shadow-terminal-green/10 border border-terminal-green/40 transform transition-all duration-300"
           >
             <div className="text-5xl font-bold mb-3 text-terminal-green drop-shadow-lg">✓</div> {/* Checkmark instead of % */}
@@ -76,7 +76,7 @@ const Impact: React.FC = () => {
           <motion.div
             custom={1}
             variants={impactVariants}
-            whileHover={{...impactVariants.hover, boxShadow: "0 0 25px rgba(173, 216, 230, 0.5)"} /* Pastel Blue glow */}
+            whileHover="hover"
             className="bg-dark-card/70 backdrop-blur-sm p-8 rounded-sm shadow-lg shadow-electric-blue/10 border border-electric-blue/40 transform transition-all duration-300"
           >
             <div className="text-5xl font-bold mb-3 text-electric-blue drop-shadow-lg">✓</div> {/* Checkmark */}
@@ -87,8 +87,8 @@ const Impact: React.FC = () => {
           <motion.div
             custom={2}
             variants={impactVariants}
-             whileHover={{...impactVariants.hover, boxShadow: "0 0 25px rgba(211, 211, 211, 0.3)"} /* Pastel Gray glow */}
-             className="bg-dark-card/70 backdrop-blur-sm p-8 rounded-sm shadow-lg shadow-white/5 border border-off-white/30 transform transition-all duration-300"
+            whileHover="hover"
+            className="bg-dark-card/70 backdrop-blur-sm p-8 rounded-sm shadow-lg shadow-white/5 border border-off-white/30 transform transition-all duration-300"
           >
             <div className="text-5xl font-bold mb-3 text-off-white/90 drop-shadow-md">✓</div> {/* Checkmark */}
             <p className="text-lg text-off-white font-semibold">Reduce Prescription Rework</p>

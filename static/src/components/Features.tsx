@@ -14,7 +14,7 @@ const featureVariants = {
     }),
     hover: {
         y: -5,
-        boxShadow: "0 0 20px rgba(152, 251, 152, 0.4)", // Pastel Green (PaleGreen)
+        boxShadow: "0 0 20px rgba(175, 238, 238, 0.4)", // Consistent Pastel Turquoise Glow
         transition: { type: "spring", stiffness: 300, damping: 15 }
     }
 };

@@ -1,14 +1,60 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { Patient } from '../types/app'; // Patient type should include medical/insurance details
 import { useAuth } from '../context/AuthContext'; // Need clinician ID
 import { FaSearch, FaTimes, FaUserCircle, FaSpinner, FaArrowLeft, FaUserPlus, FaCheckCircle, FaExclamationTriangle } from 'react-icons/fa'; // Removed FaNotesMedical
+import { v4 as uuidv4 } from 'uuid'; // Import uuid
+
+// Define the delimiter used for parsing LLM recommendations
+const RECOMMENDATION_DELIMITER = "---RECOMMENDATION---";
 
 // Define a type for the full patient data needed for prescription generation
 type FullPatientData = Patient; // Use the existing Patient type which should include history/insurance
 
 type PatientSearchResult = Pick<Patient, 'id' | 'username' | 'profile_picture_url'>;
+
+// --- DTO Types matching backend (for validation request/response) ---
+interface ProposedPrescriptionDto {
+    medicationName: string;
+    dosage: string | null;
+    frequency: string | null;
+}
+
+interface CurrentPrescriptionDto {
+    medicationName: string;
+}
+
+interface PrescriptionValidationRequest {
+    patientId: string;
+    proposedPrescriptions: ProposedPrescriptionDto[];
+    patientAllergies: string[];
+    currentPrescriptions: CurrentPrescriptionDto[];
+}
+
+interface ValidationIssueDto {
+    type: string;
+    medication: string;
+    details: string;
+}
+
+interface ValidationResponse {
+    validationIssues: ValidationIssueDto[];
+}
+// --- End DTO Types ---
+
+// --- Recommendation State Structure ---
+interface Recommendation {
+    id: string; // Unique key for React lists
+    medicationName: string;
+    dosage: string;
+    frequency: string;
+    llmNotes: string; // Notes from the LLM suggestion
+    status: 'pending' | 'approved' | 'rejected';
+    clinicianComment: string;
+    validationIssue?: string; // To display backend warnings
+}
+// --- End Recommendation State Structure ---
 
 const AddNewVisitPage: React.FC = () => {
     const navigate = useNavigate();
@@ -28,9 +74,27 @@ const AddNewVisitPage: React.FC = () => {
     const [submitError, setSubmitError] = useState<string | null>(null); // Specific submit/visit error
     const [errorPrescription, setErrorPrescription] = useState<string | null>(null); // Prescription specific error
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
+    const [visitId, setVisitId] = useState<string | null>(null); // Declare visitId state HERE
 
     // Ref for focusing search input on load
     const searchInputRef = useRef<HTMLInputElement>(null);
+
+    // --- New State for Recommendation Workflow ---
+    const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+    const [isValidated, setIsValidated] = useState(false);
+    const [canFinalize, setCanFinalize] = useState(false);
+    const [isFinalizing, setIsFinalizing] = useState(false); // Loading state for finalize
+    const [finalizeError, setFinalizeError] = useState<string | null>(null); // Error during finalization
+    // Store fetched patient data needed for validation/finalization
+    const [fullPatientDataForVisit, setFullPatientDataForVisit] = useState<FullPatientData | null>(null);
+    const [currentPrescriptionsList, setCurrentPrescriptionsList] = useState<CurrentPrescriptionDto[]>([]);
+    const [patientAllergiesList, setPatientAllergiesList] = useState<string[]>([]);
+    const [canRegenerate, setCanRegenerate] = useState(false); // State to control regeneration button visibility
+    const [loadingRegenerate, setLoadingRegenerate] = useState(false); // State for regeneration loading indicator
+    // --- End New State ---
+
+    // const [searchParams] = useSearchParams();
+    // const patientId = searchParams.get("patientId");
 
     // Debounced search effect
     useEffect(() => {
@@ -81,6 +145,14 @@ const AddNewVisitPage: React.FC = () => {
         setSuccessMessage(null); // Clear success messages
         setVisitReason('');
         setVisitNotes('');
+        setRecommendations([]); // Clear previous recommendations
+        setIsValidated(false);
+        setCanFinalize(false);
+        setVisitId(null);
+        setFullPatientDataForVisit(null);
+        setCurrentPrescriptionsList([]);
+        setPatientAllergiesList([]);
+        fetchPatientContextData(patient.id); // Fetch data needed for validation
     };
 
     const handleClearSelection = () => {
@@ -95,25 +167,68 @@ const AddNewVisitPage: React.FC = () => {
         searchInputRef.current?.focus();
     };
 
+    // --- Function to Parse LLM Output ---
+    const parseLlmRecommendations = (generatedText: string | undefined): Recommendation[] => {
+        if (!generatedText) return [];
+        console.log("Parsing LLM Text:", generatedText);
+
+        const recommendations: Recommendation[] = [];
+        const chunks = generatedText.split(RECOMMENDATION_DELIMITER);
+
+        for (const chunk of chunks) {
+            const trimmedChunk = chunk.trim();
+            if (!trimmedChunk) continue; // Skip empty chunks
+
+            // More flexible regex to match labels (case-insensitive, optional words)
+            const medicationMatch = trimmedChunk.match(/Medication(?: Name)?:\s*(.*)/i);
+            const dosageMatch = trimmedChunk.match(/Dosage:\s*(.*)/i);
+            const frequencyMatch = trimmedChunk.match(/Frequency:\s*(.*)/i);
+            const notesMatch = trimmedChunk.match(/(?:LLM )?Notes:\s*(.*)/is); // Allow "LLM Notes:" or "Notes:"
+
+            const medication = medicationMatch?.[1]?.trim();
+
+            // Only add if a medication name was found in the chunk
+            if (medication) {
+                recommendations.push({
+                    id: `rec-${uuidv4()}`, // Use uuid for a more robust unique id
+                    medicationName: medication,
+                    dosage: dosageMatch?.[1]?.trim() || 'N/A',
+                    frequency: frequencyMatch?.[1]?.trim() || 'N/A',
+                    llmNotes: notesMatch?.[1]?.trim() || 'N/A',
+                    status: 'pending',
+                    clinicianComment: '',
+                    validationIssue: undefined
+                });
+            }
+        }
+
+        console.log("Parsed Recommendations:", recommendations);
+        return recommendations;
+    };
+    // --- End Parsing Function ---
+
     const handleCreateVisit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedPatient || !clinicianId || !visitReason.trim()) {
-            setSubmitError("Please select a patient and enter a visit reason.");
+        if (!selectedPatient || !clinicianId || !visitReason.trim() || !visitNotes.trim()) {
+            setSubmitError("Please select a patient and enter visit reason and notes.");
             return;
         }
 
+        // Reset states
         setLoadingSubmit(true);
-        setLoadingPrescription(false); // Ensure prescription loading is false initially
+        setLoadingPrescription(true);
         setSubmitError(null);
         setErrorPrescription(null);
         setSuccessMessage(null);
-
-        let visitCreated = false;
-        let patientData: FullPatientData | null = null;
-        let newVisitId: string | null = null; // Store the visit ID
+        setRecommendations([]);
+        setVisitId(null);
+        setIsValidated(false);
+        setCanFinalize(false);
+        setFinalizeError(null);
+        let createdVisitId: string | null = null; // Local variable for this execution
 
         try {
-            // --- 1. Create the Visit Record ---
+            // --- 1. Create Visit Record ---
             console.log(`Creating visit for patient ${selectedPatient.id} by clinician ${clinicianId}`);
             const { data: newVisit, error: insertError } = await supabase
                 .from('visits')
@@ -124,61 +239,71 @@ const AddNewVisitPage: React.FC = () => {
                     reason: visitReason.trim(),
                     notes: visitNotes.trim() || null,
                 })
-                .select('id') // Select the ID of the newly created visit
+                .select('id')
                 .single();
-
             if (insertError) throw new Error(`Visit Creation Error: ${insertError.message}`);
             if (!newVisit?.id) throw new Error("Visit created but failed to get visit ID.");
+            createdVisitId = newVisit.id;
+            setVisitId(createdVisitId); // Update state
+            console.log("Visit created successfully, ID:", createdVisitId);
+            setSuccessMessage(`Visit created. Generating recommendations...`);
 
-            newVisitId = newVisit.id; // Store the ID
-            console.log("Visit created successfully, ID:", newVisitId);
-            visitCreated = true;
-            // Update success message immediately, will be updated again after prescription attempt
-            setSuccessMessage(`Visit for ${selectedPatient.username || 'Patient'} created. Attempting prescription generation...`);
-
-            // --- 2. Fetch Full Patient Data ---
-            console.log(`Fetching full data for patient ID: ${selectedPatient.id}`);
-            const { data: fetchedPatient, error: fetchPatientError } = await supabase
-                .from('patients')
-                .select('*') // Select all columns
-                .eq('id', selectedPatient.id)
-                .single();
-
-            if (fetchPatientError) throw new Error(`Failed to fetch patient details: ${fetchPatientError.message}`);
-            if (!fetchedPatient) throw new Error("Patient details not found after visit creation.");
-            patientData = fetchedPatient as FullPatientData;
-            console.log("Full patient data fetched:", patientData);
-
-            // --- 3. Call Gemini API Client-Side ---
-            setLoadingPrescription(true);
-            const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-            if (!apiKey) {
-                throw new Error("Gemini API Key not configured in frontend environment variables (VITE_GEMINI_API_KEY).");
+            // --- 2. Fetch Full Patient Data (if needed) ---
+            let patientData = fullPatientDataForVisit;
+            if (!patientData) {
+                 await fetchPatientContextData(selectedPatient.id);
+                 // Re-fetch from state after update
+                 patientData = fullPatientDataForVisit; 
+                 // Check again after attempting fetch
+                 if (!patientData) throw new Error("Failed to load patient data before LLM call.");
             }
-
-            // Use the latest recommended model - gemini-1.5-flash-latest
+           
+            // --- 3. Call Gemini API Client-Side ---
+            const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+            if (!apiKey) throw new Error("Gemini API Key not configured.");
             const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
-
-            // Construct a more direct, formatting-focused prompt for the demo
             const prompt = `
-For demonstration purposes, format the following clinical notes into a standard prescription structure.
-Assume a hypothetical prescription based SOLELY on the notes provided below.
-Output ONLY the prescription details in the format:
-Medication: [Example Medication]
-Dosage: [Example Dosage]
-Frequency: [Example Frequency]
-Notes: [Notes based on input, or leave blank]
+Clinician requesting prescription recommendations for patient: ${selectedPatient.username} (ID: ${selectedPatient.id}).
+Visit Reason: ${visitReason}
+Clinician Notes: ${visitNotes}
 
-Input Data:
-- Visit Reason: ${visitReason.trim()}
-- Clinician Notes: ${visitNotes.trim()}
-- Patient History Snippet: ${JSON.stringify(patientData.medical_history || '{}').substring(0, 100)}...
+Patient Context:
+Allergies: ${patientAllergiesList.join(', ')}
+Current Medications: ${currentPrescriptionsList.map(p => p.medicationName).join(', ')}
+Relevant Medical History: ${JSON.stringify(patientData.medical_history || '{}').substring(0, 100)}...
 
-Generate formatted prescription structure:
-Your prescription just needs to be a suggestion that a doctor would later review and confirm.
+Suggest up to 3 distinct prescription options appropriate for the visit reason and clinician notes, considering the patient context. For each option, provide:
+1. Medication Name
+2. Dosage (e.g., "10mg", "500mg") or "N/A"
+3. Frequency (e.g., "once daily", "twice daily", "as needed") or "N/A"
+4. Brief Notes/Rationale (max 20 words, explaining why this drug might be suitable).
+
+Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
+Example format:
+Medication Name: [Name]
+Dosage: [Dosage]
+Frequency: [Frequency]
+LLM Notes: [Rationale]
+${RECOMMENDATION_DELIMITER}
+Medication Name: [Name 2]
+Dosage: [Dosage 2]
+Frequency: [Frequency 2]
+LLM Notes: [Rationale 2]
+${RECOMMENDATION_DELIMITER}
+... (up to 3 total)
 `;
 
-            console.log("Calling Gemini API with updated prompt...");
+            // Debugging: Log data sent to Gemini
+            console.log("--- Data for Gemini Prompt ---");
+            console.log("Visit Reason:", visitReason);
+            console.log("Visit Notes:", visitNotes);
+            console.log("Allergies:", patientAllergiesList);
+            console.log("Current Meds:", currentPrescriptionsList);
+            console.log("History (raw):", patientData?.medical_history);
+            console.log("Prompt sent to Gemini:", prompt);
+            console.log("--- End Data --- ");
+
+            console.log("Calling Gemini API...");
             const geminiResponse = await fetch(geminiApiUrl, {
                 method: 'POST',
                 headers: {
@@ -191,87 +316,338 @@ Your prescription just needs to be a suggestion that a doctor would later review
                     // generationConfig: { ... } 
                 }),
             });
-
-            if (!geminiResponse.ok) {
-                const errorData = await geminiResponse.json().catch(() => ({ message: 'Unknown error structure from Gemini' }));
-                console.error("Gemini API Error Response:", errorData);
-                throw new Error(`Gemini API call failed: ${geminiResponse.status} ${geminiResponse.statusText} - ${errorData?.error?.message || 'No details'}`);
+            if (!geminiResponse.ok) { 
+                 const errorData = await geminiResponse.json().catch(() => ({ message: 'Unknown error structure' }));
+                 throw new Error(`Gemini API call failed: ${geminiResponse.status} - ${errorData?.error?.message || 'Details unavailable'}`);
             }
-
             const geminiResult = await geminiResponse.json();
-            console.log("Gemini API Raw Response:", JSON.stringify(geminiResult));
-
-            // --- 4. Parse Gemini Response & Insert Prescription ---
             const generatedText = geminiResult?.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (!generatedText) {
-                throw new Error("Gemini response did not contain generated text.");
-            }
+            if (!generatedText) throw new Error("Gemini response did not contain text.");
             console.log("Gemini Generated Text:", generatedText);
 
-            // Basic parsing (adjust regex/logic as needed based on Gemini output format)
-            const medicationMatch = generatedText.match(/Medication:\s*(.*)/i);
-            const dosageMatch = generatedText.match(/Dosage:\s*(.*)/i);
-            const frequencyMatch = generatedText.match(/Frequency:\s*(.*)/i);
-            const notesMatch = generatedText.match(/Notes:\s*(.*)/i);
-
-            const medication = medicationMatch?.[1]?.trim() || null;
-            const dosage = dosageMatch?.[1]?.trim() || null;
-            const frequency = frequencyMatch?.[1]?.trim() || null;
-            const prescriptionNotes = notesMatch?.[1]?.trim() || null;
-
-            if (!medication) {
-                // If no medication was parsed, maybe Gemini didn't think one was needed.
-                console.log("No medication found in Gemini response. Skipping prescription insert.");
-                setSuccessMessage(`Visit created for ${selectedPatient.username || 'Patient'}. No prescription generated.`);
+            // --- 4. Parse LLM Response and Set State for Review --- 
+            const parsedRecs = parseLlmRecommendations(generatedText);
+            setRecommendations(parsedRecs);
+            
+            if (parsedRecs.length > 0) {
+                setSuccessMessage("Recommendations generated. Please review and validate below.");
             } else {
-                console.log("Parsed Prescription:", { medication, dosage, frequency, prescriptionNotes });
-                // Insert into Supabase prescriptions table
-                const { error: rxInsertError } = await supabase
-                    .from('prescriptions')
-                    .insert({
-                        patient_id: selectedPatient.id,
-                        clinician_id: clinicianId,
-                        visit_id: newVisitId, // Link prescription to the visit
-                        medication: medication,
-                        dosage: dosage,
-                        frequency: frequency,
-                        notes: prescriptionNotes,
-                        // generated_by_ai: true // Optional flag
-                    });
-
-                if (rxInsertError) {
-                    throw new Error(`Failed to save generated prescription: ${rxInsertError.message}`);
-                }
-                console.log("Prescription saved successfully to Supabase.");
-                setSuccessMessage(`Visit created and prescription generated & saved successfully for ${selectedPatient.username || 'Patient'}!`);
+                setSuccessMessage("Visit created. No recommendations generated by AI.");
+                setIsValidated(true); 
+                setCanFinalize(true);
             }
 
-            // --- 5. Redirect ---
-            setTimeout(() => {
-                navigate('/clinician/dashboard');
-            }, 2500); // Slightly longer delay to read success message
+            // --- STOP before inserting prescription to DB --- 
 
         } catch (err: any) {
-            console.error("Error during visit creation or prescription generation/saving:", err);
-            if (visitCreated && !loadingPrescription) {
-                // Error happened while fetching patient data or before Gemini call
-                setSubmitError(`Visit created, but failed before prescription generation: ${err.message}`);
-                // Optionally clear the partial success message
-                setSuccessMessage(null);
-            } else if (visitCreated && loadingPrescription) {
-                // Error happened during Gemini call or Supabase prescription insert
-                setErrorPrescription(`Visit created, but prescription generation/saving failed: ${err.message}`);
-                // Keep partial success message, indicating visit was made
-                setSuccessMessage(`Visit for ${selectedPatient.username || 'Patient'} created, but automatic prescription failed.`);
-            } else {
-                // Error happened during visit creation itself
-                setSubmitError(`Failed to create visit: ${err.message}`);
-            }
+            console.error("Error during visit creation or recommendation generation:", err);
+            setErrorPrescription(err.message || "An unknown error occurred.");
+            setSuccessMessage(null); // Clear success message on error
+             // Optional: Consider rolling back the visit if recommendations fail spectacularly
+             // if (createdVisitId) { console.warn("Need to decide if visit should be deleted on error"); }
         } finally {
             setLoadingSubmit(false);
             setLoadingPrescription(false);
         }
     };
+
+    // Helper to fetch patient allergies and current prescriptions
+    const fetchPatientContextData = async (patientId: string) => {
+        try {
+            console.log("Fetching context data (allergies, current meds) for", patientId);
+            // Fetch full patient data again (might already have it, but ensure it's fresh)
+            const { data: patientData, error: patientError } = await supabase
+                .from('patients')
+                .select('*')
+                .eq('id', patientId)
+                .single();
+            if (patientError) throw new Error(`Patient Fetch Error: ${patientError.message}`);
+            if (!patientData) throw new Error("Patient not found");
+            setFullPatientDataForVisit(patientData as FullPatientData);
+
+            // Fetch current prescriptions
+            const { data: currentMeds, error: medsError } = await supabase
+                .from('prescriptions')
+                .select('medicationName:medication') // Select only medication name
+                .eq('patient_id', patientId)
+                // TODO: Add logic to filter for *active* prescriptions if necessary
+                // .eq('status', 'active') 
+            if (medsError) throw new Error(`Current Meds Fetch Error: ${medsError.message}`);
+            setCurrentPrescriptionsList((currentMeds as CurrentPrescriptionDto[]) || []);
+            console.log("Fetched Current Meds:", currentMeds);
+
+            // Parse allergies (Replace with more robust parsing as needed)
+            const history = patientData.medical_history as any;
+            let allergies: string[] = [];
+            if (history && typeof history === 'object') {
+                 if (Array.isArray(history.allergies)) {
+                     allergies = history.allergies.filter((a: any) => typeof a === 'string');
+                 } else {
+                    // Fallback basic check (improve this)
+                    Object.entries(history).forEach(([key, value]) => {
+                        if (typeof key === 'string' && key.toLowerCase().includes('allergy') && typeof value === 'string') {
+                           allergies.push(value);
+                        }
+                    });
+                 }
+            }
+            setPatientAllergiesList(allergies);
+            console.log("Parsed Allergies:", allergies);
+
+        } catch (error: any) {
+            console.error("Error fetching patient context data:", error);
+            setErrorPrescription(`Failed to load patient details for validation: ${error.message}`);
+            // Reset potentially dependent state
+            setCurrentPrescriptionsList([]);
+            setPatientAllergiesList([]);
+            setFullPatientDataForVisit(null);
+        }
+    };
+
+    // --- Handlers for Recommendation Review ---
+    const handleStatusChange = (id: string, newStatus: 'approved' | 'rejected') => {
+        const updatedRecommendations = recommendations.map(rec => {
+            if (rec.id === id) {
+                // Reset validation issue if status changes
+                return { ...rec, status: newStatus, validationIssue: undefined };
+            }
+            return rec;
+        });
+
+        // Determine if regeneration should be possible AFTER updating statuses
+        const allowRegeneration = updatedRecommendations.some(rec => rec.status === 'rejected');
+
+        setRecommendations(updatedRecommendations);
+        setCanRegenerate(allowRegeneration); // Set based on whether any are rejected
+        setIsValidated(false); // Reset validation status on any change
+        setErrorPrescription(null); // Clear previous validation errors
+        setFinalizeError(null); // Clear finalize errors
+        setSuccessMessage(null); // Clear success message
+    };
+
+    const handleCommentChange = (id: string, comment: string) => {
+        setRecommendations(prev =>
+            prev.map(r => (r.id === id ? { ...r, clinicianComment: comment } : r))
+        );
+    };
+
+    const handleValidation = async () => {
+        const approved = recommendations.filter(r => r.status === 'approved');
+        if (approved.length === 0) {
+            alert("Please approve at least one recommendation to validate.");
+            return;
+        }
+        if (!selectedPatient) {
+            alert("Patient context lost. Please re-select patient.");
+            return;
+        }
+
+        setLoadingPrescription(true); // Use loading indicator
+        setErrorPrescription(null); // Clear previous errors
+        setIsValidated(false);
+        setCanFinalize(false);
+
+        const requestBody: PrescriptionValidationRequest = {
+            patientId: selectedPatient.id,
+            proposedPrescriptions: approved.map(r => ({
+                medicationName: r.medicationName,
+                dosage: r.dosage,
+                frequency: r.frequency
+            })),
+            patientAllergies: patientAllergiesList,
+            currentPrescriptions: currentPrescriptionsList
+        };
+
+        try {
+            console.log("Sending validation request:", requestBody);
+            const response = await fetch('/api/prescriptions/validate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody),
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Validation request failed: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+
+            const result: ValidationResponse = await response.json();
+            console.log("Validation response:", result);
+
+            // Update validation issues in state
+            let hasIssues = result.validationIssues.length > 0;
+            setRecommendations(prev => prev.map(rec => {
+                const issue = result.validationIssues.find(vi => vi.medication === rec.medicationName);
+                // Only mark approved items with issues if needed, or mark all matching meds
+                return { ...rec, validationIssue: issue ? issue.details : undefined };
+            }));
+
+            setIsValidated(true);
+            setCanFinalize(!hasIssues); // Can finalize only if NO issues
+            if (hasIssues) {
+                 setErrorPrescription("Validation found potential issues. Please review warnings.");
+            } else {
+                setSuccessMessage("Validation successful. Ready to finalize.");
+            }
+
+        } catch (error: any) {
+            console.error("Validation API Error:", error);
+            setErrorPrescription(`Validation Call Failed: ${error.message}`);
+            setIsValidated(false);
+            setCanFinalize(false);
+        } finally {
+             setLoadingPrescription(false);
+        }
+    };
+
+    const handleFinalize = async () => {
+        if (!visitId || !selectedPatient || !clinicianId) {
+             setFinalizeError("Cannot finalize: Missing visit, patient, or clinician context.");
+             return;
+        }
+        const finalPrescriptions = recommendations.filter(r => r.status === 'approved');
+        if (finalPrescriptions.length === 0) {
+            // If finalizing without any approved meds, maybe just navigate?
+            console.log("No prescriptions approved. Navigating back.");
+            navigate('/clinician/dashboard');
+            return;
+        }
+
+        setIsFinalizing(true);
+        setFinalizeError(null);
+        setSuccessMessage(null);
+
+        const prescriptionsToInsert = finalPrescriptions.map(fp => ({
+            patient_id: selectedPatient.id,
+            clinician_id: clinicianId,
+            visit_id: visitId,
+            medication: fp.medicationName,
+            dosage: fp.dosage,
+            frequency: fp.frequency,
+            notes: fp.clinicianComment || null, // Save clinician comment as notes
+        }));
+
+        try {
+             console.log("Inserting final prescriptions:", prescriptionsToInsert);
+            const { error: insertError } = await supabase
+                .from('prescriptions')
+                .insert(prescriptionsToInsert);
+
+            if (insertError) {
+                throw new Error(`Failed to save final prescriptions: ${insertError.message}`);
+            }
+
+            console.log("Final prescriptions saved successfully.");
+            setSuccessMessage("Visit and approved prescriptions finalized successfully!");
+            // Redirect after a short delay
+            setTimeout(() => {
+                 navigate('/clinician/dashboard');
+            }, 2000);
+
+        } catch (error: any) {
+            console.error("Error finalizing prescriptions:", error);
+            setFinalizeError(`Failed to finalize: ${error.message}`);
+        } finally {
+             setIsFinalizing(false);
+        }
+    };
+
+    // Function to handle regeneration of suggestions
+    const handleRegenerate = useCallback(async () => {
+        if (!visitNotes || !selectedPatient || !fullPatientDataForVisit) {
+            setErrorPrescription("Cannot regenerate: Missing visit notes, patient selection, or patient context.");
+            return;
+        }
+
+        setLoadingRegenerate(true);
+        setErrorPrescription(null);
+        setSuccessMessage(null);
+        setFinalizeError(null);
+        setIsValidated(false);
+        setCanFinalize(false);
+        // Clear old recommendations visually *before* fetching new ones
+        // setRecommendations([]); // Decide if you want this, or keep old ones until new arrive
+
+        const rejectedRecommendationsText = recommendations
+            .filter(rec => rec.status === 'rejected')
+            .map(rec => `- ${rec.medicationName}: Reason: ${rec.clinicianComment || 'No reason provided'}`)
+            .join('\n');
+
+        const patientData = fullPatientDataForVisit; // Already fetched and in state
+
+        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+        if (!apiKey) {
+             setErrorPrescription("Gemini API Key not configured.");
+             setLoadingRegenerate(false);
+             return;
+        }
+        const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+
+        const regenerationPrompt = `
+Clinician requesting *new* prescription recommendations for patient: ${selectedPatient.username} (ID: ${selectedPatient.id}).
+
+Previously Rejected Recommendations (Do NOT suggest these again for the listed reasons):
+${rejectedRecommendationsText || 'None'}
+
+Original Visit Context:
+Visit Reason: ${visitReason}
+Clinician Notes: ${visitNotes}
+Allergies: ${patientAllergiesList.join(', ')}
+Current Medications: ${currentPrescriptionsList.map(p => p.medicationName).join(', ')}
+Relevant Medical History: ${JSON.stringify(patientData.medical_history || '{}').substring(0, 100)}...
+
+Suggest up to 3 *new* and *distinct* prescription options appropriate for the original visit reason and clinician notes, considering the patient context and avoiding the rejected options above. For each new option, provide:
+1. Medication Name
+2. Dosage
+3. Frequency
+4. Brief Notes/Rationale
+
+Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
+`;
+
+        try {
+            console.log("Calling Gemini API for regeneration...");
+            console.log("Regeneration Prompt:", regenerationPrompt);
+
+            const geminiResponse = await fetch(geminiApiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: regenerationPrompt }] }],
+                }),
+            });
+
+            if (!geminiResponse.ok) {
+                const errorData = await geminiResponse.json().catch(() => ({ message: 'Unknown error structure' }));
+                throw new Error(`Gemini API regeneration call failed: ${geminiResponse.status} - ${errorData?.error?.message || 'Details unavailable'}`);
+            }
+
+            const geminiResult = await geminiResponse.json();
+            const generatedText = geminiResult?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!generatedText) throw new Error("Gemini regeneration response did not contain text.");
+
+            console.log("Gemini Regenerated Text:", generatedText);
+            const parsedRecs = parseLlmRecommendations(generatedText);
+
+            if (parsedRecs.length > 0) {
+                setRecommendations(parsedRecs); // Replace old recommendations
+                setSuccessMessage("New recommendations generated.");
+                setCanRegenerate(false); // Hide regenerate button until another rejection
+            } else {
+                setErrorPrescription("AI could not generate new recommendations based on the constraints.");
+                 // Keep canRegenerate true so user can try again or modify rejection notes
+            }
+
+        } catch (error: any) {
+            console.error("Error regenerating recommendations:", error);
+            setErrorPrescription(`Regeneration Failed: ${error.message}`);
+             // Keep canRegenerate true so user can try again
+        } finally {
+            setLoadingRegenerate(false);
+        }
+    }, [visitReason, visitNotes, selectedPatient, recommendations, patientAllergiesList, currentPrescriptionsList, fullPatientDataForVisit, clinicianId]); // Added dependencies
 
     // Check if clinician profile is still loading or missing
     if (authLoading) {
@@ -287,7 +663,6 @@ Your prescription just needs to be a suggestion that a doctor would later review
             </div>
         );
     }
-
 
     return (
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12 text-off-white font-sans max-w-3xl">
@@ -450,24 +825,120 @@ Your prescription just needs to be a suggestion that a doctor would later review
                         <div>
                             <button
                                 type="submit"
-                                disabled={loadingSubmit || loadingPrescription || (!!successMessage && !errorPrescription && !submitError)} // Disable if loading or full success without errors
+                                disabled={loadingSubmit || loadingPrescription || recommendations.length > 0}
                                 className="w-full group flex justify-center items-center py-3 px-4 border border-electric-blue rounded-md shadow-sm text-sm font-medium text-electric-blue bg-transparent hover:bg-electric-blue hover:text-dark-bg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-card focus:ring-electric-blue disabled:opacity-50 disabled:cursor-not-allowed transition duration-200 ease-in-out active:scale-95"
                             >
-                                {loadingSubmit ? (
+                                {(loadingSubmit || loadingPrescription) ? (
                                     <svg className="animate-spin h-5 w-5 text-electric-blue" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                     </svg>
-                                ) : loadingPrescription ? (
-                                    <FaSpinner className="animate-spin h-5 w-5 text-electric-blue" />
                                 ) : (
-                                    <span className="group-hover:scale-105 transition-transform duration-200 ease-in-out">Save Visit & Generate Prescription</span>
+                                    <span className="group-hover:scale-105 transition-transform duration-200 ease-in-out">Save Visit & Generate Recommendations</span>
                                 )}
                             </button>
                         </div>
                     </form>
                 </div>
             )}
+
+            {/* Recommendation Review Section (conditionally rendered) */} 
+            {recommendations.length > 0 && (
+                <div className="mt-10 p-6 bg-dark-card border border-border-color rounded-xl shadow-lg animate-fade-in">
+                    <h2 className="text-2xl font-semibold text-white mb-6 border-b border-border-color pb-3">Review AI Recommendations</h2>
+                    <div className="space-y-5">
+                        {recommendations.map((rec) => (
+                            <div key={rec.id} className={`p-4 rounded-lg border transition-all duration-200 ${rec.status === 'approved' ? 'border-green-500/50 bg-green-900/20' : rec.status === 'rejected' ? 'border-red-500/50 bg-red-900/20 opacity-60' : 'border-border-color/50 bg-dark-input/30 hover:bg-dark-input/50'}`}>
+                                {/* Medication Details */} 
+                                <p className="font-semibold text-base text-pastel-blue mb-1">{rec.medicationName}</p>
+                                <p className="text-sm text-off-white/80 mb-1">Dosage: {rec.dosage} | Frequency: {rec.frequency}</p>
+                                {rec.llmNotes && <p className="text-xs italic text-off-white/60 mt-2 mb-3 border-t border-border-color/30 pt-2">Notes from AI: {rec.llmNotes}</p>}
+
+                                {/* Validation Warning */} 
+                                {rec.validationIssue && (
+                                     <div className="my-2 p-2 bg-orange-900/40 border border-orange-700 rounded text-orange-200 text-xs flex items-center">
+                                         <FaExclamationTriangle className="h-4 w-4 mr-2 flex-shrink-0" />
+                                         <span>{rec.validationIssue}</span>
+                                     </div>
+                                )}
+
+                                {/* Clinician Comment */} 
+                                <textarea
+                                    placeholder="Add clinician notes/comments for this prescription..."
+                                    value={rec.clinicianComment}
+                                    onChange={(e) => handleCommentChange(rec.id, e.target.value)}
+                                    rows={2}
+                                    className="w-full mt-2 px-3 py-2 text-sm rounded-md bg-dark-input border border-border-color/70 focus:border-electric-blue focus:ring-1 focus:ring-electric-blue transition duration-150 disabled:opacity-50"
+                                    disabled={rec.status === 'rejected'}
+                                />
+
+                                {/* Action Buttons */} 
+                                <div className="flex justify-end space-x-3 mt-3">
+                                    <button 
+                                        type="button"
+                                        onClick={() => handleStatusChange(rec.id, 'rejected')}
+                                        className={`px-3 py-1 text-xs rounded font-medium transition duration-150 ${rec.status === 'rejected' ? 'bg-red-600/80 hover:bg-red-600 text-white' : 'bg-dark-bg border border-border-color text-off-white/70 hover:bg-red-700/30 hover:text-red-300'}`}
+                                    >
+                                        Reject
+                                    </button>
+                                    <button 
+                                        type="button"
+                                        onClick={() => handleStatusChange(rec.id, 'approved')}
+                                        className={`px-3 py-1 text-xs rounded font-medium transition duration-150 ${rec.status === 'approved' ? 'bg-green-600/80 hover:bg-green-600 text-white' : 'bg-dark-bg border border-border-color text-off-white/70 hover:bg-green-700/30 hover:text-green-300'}`}
+                                    >
+                                        Approve
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Validation/Finalize Buttons */} 
+                    <div className="mt-8 pt-6 border-t border-border-color flex flex-col sm:flex-row justify-end items-center gap-4">
+                         {errorPrescription && !loadingPrescription && 
+                            <p className="text-red-400 text-sm text-left flex-grow mr-4">{errorPrescription}</p>} 
+                         {finalizeError && !isFinalizing && 
+                            <p className="text-red-400 text-sm text-left flex-grow mr-4">{finalizeError}</p>} 
+                         {successMessage && !loadingPrescription && !isFinalizing &&
+                             <p className="text-green-400 text-sm text-left flex-grow mr-4">{successMessage}</p>}
+
+                        <button
+                            type="button"
+                            onClick={handleValidation}
+                            disabled={loadingPrescription || isFinalizing}
+                            className="w-full sm:w-auto flex items-center justify-center px-4 py-2 border border-electric-blue text-electric-blue rounded-md hover:bg-electric-blue/10 disabled:opacity-50 transition text-sm font-medium"
+                        >
+                             {loadingPrescription ? <FaSpinner className="animate-spin mr-2" /> : <FaCheckCircle className="mr-2" />}
+                             {loadingPrescription ? 'Validating...' : 'Validate Selections'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleFinalize}
+                            disabled={!isValidated || !canFinalize || isFinalizing || loadingPrescription}
+                            className="w-full sm:w-auto flex items-center justify-center px-4 py-2 border border-pastel-green text-pastel-green rounded-md hover:bg-pastel-green/10 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm font-medium"
+                        >
+                             {isFinalizing ? <FaSpinner className="animate-spin mr-2" /> : <FaUserPlus className="mr-2" />}
+                             {isFinalizing ? 'Finalizing...' : 'Finalize Prescriptions'}
+                        </button>
+                    </div>
+
+                    {/* Regeneration Button - Appears only when possible */} 
+                    {canRegenerate && (
+                         <div className="mt-4 flex justify-center">
+                             <button 
+                                 type="button"
+                                 onClick={handleRegenerate}
+                                 disabled={loadingRegenerate}
+                                 className="flex items-center justify-center px-4 py-2 border border-orange-400 text-orange-400 rounded-md hover:bg-orange-400/10 disabled:opacity-50 transition text-sm font-medium"
+                             >
+                                 {loadingRegenerate ? <FaSpinner className="animate-spin mr-2" /> : <FaCheckCircle className="mr-2" />} 
+                                 {loadingRegenerate ? 'Regenerating...' : 'Regenerate Suggestions (Based on Rejections)'}
+                             </button>
+                         </div>
+                    )}
+                </div>
+            )}
+
             {/* Custom Scrollbar CSS */}
             <style>{`
              .custom-scrollbar::-webkit-scrollbar {

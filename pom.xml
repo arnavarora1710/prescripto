@@ -50,6 +50,40 @@
 			<artifactId>tess4j</artifactId>
 			<version>5.11.0</version> <!-- Check for the latest version -->
 		</dependency>
+
+		<!-- Added for loading .env file -->
+		<dependency>
+			<groupId>io.github.cdimascio</groupId>
+			<artifactId>dotenv-java</artifactId>
+			<version>3.0.0</version>
+		</dependency>
+
+		<!-- Added for JSON handling (e.g., for Gemini API) -->
+		<dependency>
+			<groupId>com.google.code.gson</groupId>
+			<artifactId>gson</artifactId>
+			<version>2.10.1</version>
+		</dependency>
+
+		<!-- Added for Spring Data JPA -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jpa</artifactId>
+		</dependency>
+
+		<!-- Added for PostgreSQL Database Connection -->
+		<dependency>
+			<groupId>org.postgresql</groupId>
+			<artifactId>postgresql</artifactId>
+			<scope>runtime</scope> <!-- Only needed at runtime -->
+		</dependency>
+
+		<!-- Dependency for loading .env variables into Spring Environment -->
+		<dependency>
+			<groupId>me.paulschwarz</groupId>
+			<artifactId>spring-dotenv</artifactId>
+			<version>4.0.0</version> <!-- Check for latest version -->
+		</dependency>
 	</dependencies>
 
 	<build>

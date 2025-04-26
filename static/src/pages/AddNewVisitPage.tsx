@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
-import { Patient, Visit } from '../types/app'; // Assuming Visit type exists
+import { Patient } from '../types/app'; // Patient type should include medical/insurance details
 import { useAuth } from '../context/AuthContext'; // Need clinician ID
-import { FaSearch, FaTimes, FaUserCircle } from 'react-icons/fa'; // Icons
+import { FaSearch, FaTimes, FaUserCircle, FaSpinner } from 'react-icons/fa'; // Added FaSpinner
+
+// Define a type for the full patient data needed for prescription generation
+type FullPatientData = Patient; // Use the existing Patient type which should include history/insurance
 
 type PatientSearchResult = Pick<Patient, 'id' | 'username' | 'profile_picture_url'>;
 
@@ -19,8 +22,10 @@ const AddNewVisitPage: React.FC = () => {
     const [visitNotes, setVisitNotes] = useState('');
 
     const [loadingSearch, setLoadingSearch] = useState(false);
-    const [loadingSubmit, setLoadingSubmit] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [loadingSubmit, setLoadingSubmit] = useState(false); // For saving visit
+    const [loadingPrescription, setLoadingPrescription] = useState(false); // For generating prescription
+    const [error, setError] = useState<string | null>(null); // General/Visit error
+    const [errorPrescription, setErrorPrescription] = useState<string | null>(null); // Prescription specific error
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
     // Debounced search effect
@@ -66,11 +71,13 @@ const AddNewVisitPage: React.FC = () => {
         setSearchTerm(''); // Clear search term after selection
         setSearchResults([]); // Clear search results
         setError(null); // Clear any search errors
+        setErrorPrescription(null); // Clear prescription errors too
     };
 
     const handleClearSelection = () => {
         setSelectedPatient(null);
         setError(null);
+        setErrorPrescription(null);
         setSuccessMessage(null);
         setVisitReason('');
         setVisitNotes('');
@@ -84,10 +91,17 @@ const AddNewVisitPage: React.FC = () => {
         }
 
         setLoadingSubmit(true);
+        setLoadingPrescription(false); // Ensure prescription loading is false initially
         setError(null);
+        setErrorPrescription(null);
         setSuccessMessage(null);
 
+        let visitCreated = false;
+        let patientData: FullPatientData | null = null;
+        let newVisitId: string | null = null; // Store the visit ID
+
         try {
+            // --- 1. Create the Visit Record ---
             console.log(`Creating visit for patient ${selectedPatient.id} by clinician ${clinicianId}`);
             const { data: newVisit, error: insertError } = await supabase
                 .from('visits')
@@ -96,35 +110,154 @@ const AddNewVisitPage: React.FC = () => {
                     clinician_id: clinicianId,
                     visit_date: new Date().toISOString(),
                     reason: visitReason.trim(),
-                    notes: visitNotes.trim() || null, // Store null if notes are empty/whitespace
+                    notes: visitNotes.trim() || null,
                 })
-                .select() // Optionally select the newly created visit
-                .single(); // Expect a single record back
+                .select('id') // Select the ID of the newly created visit
+                .single();
 
-            if (insertError) throw insertError;
+            if (insertError) throw new Error(`Visit Creation Error: ${insertError.message}`);
+            if (!newVisit?.id) throw new Error("Visit created but failed to get visit ID.");
 
-            console.log("Visit created successfully:", newVisit);
-            // --- Simulate Prescription Creation (Backend would handle this) ---
-            console.log("Simulating prescription creation for visit:", newVisit.id);
-            // In a real scenario, you might call another RPC or handle this based on backend logic triggered by the visit insert.
-            // Example: await supabase.rpc('create_prescription_for_visit', { p_visit_id: newVisit.id, p_medication: 'SimulatedMed' });
+            newVisitId = newVisit.id; // Store the ID
+            console.log("Visit created successfully, ID:", newVisitId);
+            visitCreated = true;
+            // Update success message immediately, will be updated again after prescription attempt
+            setSuccessMessage(`Visit for ${selectedPatient.username || 'Patient'} created. Attempting prescription generation...`);
 
-            setSuccessMessage(`Visit for ${selectedPatient.username || 'Patient'} created successfully!`);
-            // Reset form partially or fully
-            // setVisitReason('');
-            // setVisitNotes('');
-            // setSelectedPatient(null); // Or keep patient selected for potential follow-up action?
+            // --- 2. Fetch Full Patient Data ---
+            console.log(`Fetching full data for patient ID: ${selectedPatient.id}`);
+            const { data: fetchedPatient, error: fetchPatientError } = await supabase
+                .from('patients')
+                .select('*') // Select all columns
+                .eq('id', selectedPatient.id)
+                .single();
 
-            // Navigate back to dashboard after a short delay
+            if (fetchPatientError) throw new Error(`Failed to fetch patient details: ${fetchPatientError.message}`);
+            if (!fetchedPatient) throw new Error("Patient details not found after visit creation.");
+            patientData = fetchedPatient as FullPatientData;
+            console.log("Full patient data fetched:", patientData);
+
+            // --- 3. Call Gemini API Client-Side ---
+            setLoadingPrescription(true);
+            const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+            if (!apiKey) {
+                throw new Error("Gemini API Key not configured in frontend environment variables (VITE_GEMINI_API_KEY).");
+            }
+
+            // Use the latest recommended model - gemini-1.5-flash-latest
+            const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+
+            // Construct a detailed prompt
+            const prompt = `
+Generate a potential prescription based on the following patient visit information.
+Output ONLY the prescription details in a simple, parsable format like:
+Medication: [Medication Name]
+Dosage: [Dosage]
+Frequency: [Frequency]
+Notes: [Any notes or leave blank]
+
+Patient Details:
+- Medical History: ${JSON.stringify(patientData.medical_history || 'N/A')}
+- Allergies: ${JSON.stringify((patientData.medical_history as any)?.allergies || 'N/A')} 
+Visit Details:
+- Reason: ${visitReason.trim()}
+- Clinician Notes: ${visitNotes.trim()}
+
+Generate prescription:
+`;
+
+            console.log("Calling Gemini API with prompt...");
+            const geminiResponse = await fetch(geminiApiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    // Optional: Add safety settings if needed
+                    // safetySettings: [ ... ], 
+                    // generationConfig: { ... } 
+                }),
+            });
+
+            if (!geminiResponse.ok) {
+                const errorData = await geminiResponse.json().catch(() => ({ message: 'Unknown error structure from Gemini' }));
+                console.error("Gemini API Error Response:", errorData);
+                throw new Error(`Gemini API call failed: ${geminiResponse.status} ${geminiResponse.statusText} - ${errorData?.error?.message || 'No details'}`);
+            }
+
+            const geminiResult = await geminiResponse.json();
+            console.log("Gemini API Raw Response:", JSON.stringify(geminiResult));
+
+            // --- 4. Parse Gemini Response & Insert Prescription ---
+            const generatedText = geminiResult?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!generatedText) {
+                throw new Error("Gemini response did not contain generated text.");
+            }
+            console.log("Gemini Generated Text:", generatedText);
+
+            // Basic parsing (adjust regex/logic as needed based on Gemini output format)
+            const medicationMatch = generatedText.match(/Medication:\s*(.*)/i);
+            const dosageMatch = generatedText.match(/Dosage:\s*(.*)/i);
+            const frequencyMatch = generatedText.match(/Frequency:\s*(.*)/i);
+            const notesMatch = generatedText.match(/Notes:\s*(.*)/i);
+
+            const medication = medicationMatch?.[1]?.trim() || null;
+            const dosage = dosageMatch?.[1]?.trim() || null;
+            const frequency = frequencyMatch?.[1]?.trim() || null;
+            const prescriptionNotes = notesMatch?.[1]?.trim() || null;
+
+            if (!medication) {
+                // If no medication was parsed, maybe Gemini didn't think one was needed.
+                console.log("No medication found in Gemini response. Skipping prescription insert.");
+                setSuccessMessage(`Visit created for ${selectedPatient.username || 'Patient'}. No prescription generated.`);
+            } else {
+                console.log("Parsed Prescription:", { medication, dosage, frequency, prescriptionNotes });
+                // Insert into Supabase prescriptions table
+                const { error: rxInsertError } = await supabase
+                    .from('prescriptions')
+                    .insert({
+                        patient_id: selectedPatient.id,
+                        clinician_id: clinicianId,
+                        visit_id: newVisitId, // Link prescription to the visit
+                        medication: medication,
+                        dosage: dosage,
+                        frequency: frequency,
+                        notes: prescriptionNotes,
+                        // generated_by_ai: true // Optional flag
+                    });
+
+                if (rxInsertError) {
+                    throw new Error(`Failed to save generated prescription: ${rxInsertError.message}`);
+                }
+                console.log("Prescription saved successfully to Supabase.");
+                setSuccessMessage(`Visit created and prescription generated & saved successfully for ${selectedPatient.username || 'Patient'}!`);
+            }
+
+            // --- 5. Redirect ---
             setTimeout(() => {
                 navigate('/clinician/dashboard');
-            }, 2000); // 2 second delay before redirect
+            }, 2500); // Slightly longer delay to read success message
 
         } catch (err: any) {
-            console.error("Error creating visit:", err);
-            setError(`Failed to create visit: ${err.message}`);
+            console.error("Error during visit creation or prescription generation/saving:", err);
+            if (visitCreated && !loadingPrescription) {
+                // Error happened while fetching patient data or before Gemini call
+                setError(`Visit created, but failed before prescription generation: ${err.message}`);
+                // Optionally clear the partial success message
+                setSuccessMessage(null);
+            } else if (visitCreated && loadingPrescription) {
+                // Error happened during Gemini call or Supabase prescription insert
+                setErrorPrescription(`Visit created, but prescription generation/saving failed: ${err.message}`);
+                // Keep partial success message, indicating visit was made
+                setSuccessMessage(`Visit for ${selectedPatient.username || 'Patient'} created, but automatic prescription failed.`);
+            } else {
+                // Error happened during visit creation itself
+                setError(`Failed to create visit: ${err.message}`);
+            }
         } finally {
             setLoadingSubmit(false);
+            setLoadingPrescription(false);
         }
     };
 
@@ -217,8 +350,7 @@ const AddNewVisitPage: React.FC = () => {
                             <FaUserCircle className="h-12 w-12 text-off-white/40" />
                         )}
                         <div>
-                            <p className="text-lg font-semibold text-white">{selectedPatient.username || 'Patient'}</p>
-                            <p className="text-sm text-off-white/60">ID: {selectedPatient.id}</p>
+                            <p className="text-lg font-semibold text-white">{selectedPatient.username || 'Selected Patient'}</p>
                         </div>
                     </div>
 
@@ -236,13 +368,13 @@ const AddNewVisitPage: React.FC = () => {
                                 onChange={(e) => setVisitReason(e.target.value)}
                                 className="w-full px-4 py-2 rounded-md bg-dark-input border border-off-white/20 text-white placeholder-off-white/50 focus:outline-none focus:ring-2 focus:ring-electric-blue focus:border-transparent transition duration-150"
                                 placeholder="e.g., Follow-up, Checkup, Consultation"
-                                disabled={loadingSubmit}
+                                disabled={loadingSubmit || loadingPrescription} // Disable if submitting visit or generating Rx
                             />
                         </div>
 
                         <div>
                             <label htmlFor="visitNotes" className="block text-sm font-medium text-off-white/80 mb-1">
-                                Visit Notes
+                                Visit Notes (Diagnosis, Treatment Plan)
                             </label>
                             <textarea
                                 id="visitNotes"
@@ -250,19 +382,27 @@ const AddNewVisitPage: React.FC = () => {
                                 value={visitNotes}
                                 onChange={(e) => setVisitNotes(e.target.value)}
                                 className="w-full px-4 py-2 rounded-md bg-dark-input border border-off-white/20 text-white placeholder-off-white/50 focus:outline-none focus:ring-2 focus:ring-electric-blue focus:border-transparent transition duration-150"
-                                placeholder="Enter observations, diagnosis, treatment plan, etc."
-                                disabled={loadingSubmit}
+                                placeholder="Enter observations, diagnosis, treatment plan for LLM..."
+                                disabled={loadingSubmit || loadingPrescription} // Disable if submitting visit or generating Rx
                             />
                         </div>
 
                         {/* Error/Success Messages */}
-                        {error && <p className="text-red-400 text-center text-sm">{error}</p>}
-                        {successMessage && <p className="text-green-400 text-center text-sm">{successMessage}</p>}
+                        {error && <p className="text-red-400 text-center text-sm py-2">{error}</p>}
+                        {errorPrescription && <p className="text-orange-400 text-center text-sm py-2">{errorPrescription}</p>}
+                        {successMessage && !errorPrescription && <p className="text-green-400 text-center text-sm py-2">{successMessage}</p>}
+                        {/* Show specific loading message for prescription generation */}
+                        {loadingPrescription && (
+                            <div className="flex items-center justify-center text-sm text-pastel-blue py-2">
+                                <FaSpinner className="animate-spin mr-2" />
+                                <span>Generating prescription...</span>
+                            </div>
+                        )}
 
                         <div>
                             <button
                                 type="submit"
-                                disabled={loadingSubmit || !!successMessage} // Disable after success until redirect
+                                disabled={loadingSubmit || loadingPrescription || (!!successMessage && !errorPrescription)} // Disable if loading or full success
                                 className="w-full flex justify-center py-3 px-4 border border-electric-blue rounded-md shadow-sm text-sm font-medium text-electric-blue bg-transparent hover:bg-electric-blue hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-card focus:ring-electric-blue disabled:opacity-50 disabled:cursor-not-allowed transition duration-150"
                             >
                                 {loadingSubmit ? (
@@ -270,7 +410,9 @@ const AddNewVisitPage: React.FC = () => {
                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                     </svg>
-                                ) : 'Save Visit'}
+                                ) : loadingPrescription ? (
+                                    <FaSpinner className="animate-spin -ml-1 mr-3 h-5 w-5" />
+                                ) : 'Save Visit & Generate Prescription'}
                             </button>
                         </div>
                     </form>

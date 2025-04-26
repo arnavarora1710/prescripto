@@ -1,45 +1,70 @@
+// Define the structure for Patient data
+export interface Patient {
+    id: string;
+    user_id: string;
+    username: string | null;
+    created_at: string;
+    medical_history: JSONValue | null;
+    insurance_details: JSONValue | null;
+    profile_picture_url?: string | null;
+}
+
+// Define the structure for Clinician data
+export interface Clinician {
+    id: string;
+    user_id: string;
+    username: string | null;
+    created_at: string;
+    profile_picture_url?: string | null;
+}
+
 // Base user information (could be expanded)
 export interface UserProfile {
-    id: string;       // Patient or Clinician table ID
-    user_id: string;  // Corresponds to auth.users.id
-    username: string | null; // Add username
-    // email?: string; // Remove email if username is primary identifier
-    profile_picture_url?: string | null; // Add profile picture URL
-    created_at: string;
-    updated_at: string;
+    userId: string;
+    profileId: string; // ID from either patients or clinicians table
+    role: 'patient' | 'clinician' | null;
+    email?: string;
+    username?: string | null;
+    profilePictureUrl?: string | null;
 }
 
-export interface Patient extends UserProfile {
-    insurance_details: any | null; // Or a more specific type if JSON structure is known
-    medical_history: any | null;   // Or a more specific type
-}
-
-export interface Clinician extends UserProfile {
-    // Add clinician-specific fields if any
-}
-
+// Define the structure for Prescription data
 export interface Prescription {
     id: string;
     patient_id: string;
     clinician_id: string;
+    visit_id?: string | null; // Now includes visit_id
     medication: string;
     dosage: string | null;
     frequency: string | null;
     notes: string | null;
     created_at: string;
-    // Optionally include clinician details if joined
-    clinician_email?: string; 
+    // Optional: Add fields if you join clinician/patient names in queries
+    clinicians?: { username?: string | null };
 }
 
+// Define the structure for Visit data
 export interface Visit {
     id: string;
     patient_id: string;
     clinician_id: string;
-    visit_date: string;
+    visit_date: string; // ISO 8601 format
     reason: string | null;
     notes: string | null;
     created_at: string;
-    // Update to use username
-    // clinician_email?: string;
-    patient_username?: string; // Changed from patient_email
-} 
+    // Optional: Add fields if you join clinician/patient names in queries
+    clinicians?: { username?: string | null };
+    patients?: { username?: string | null };
+    patient_username?: string; // This might come from specific RPC calls
+    // Add the embedded prescriptions array
+    prescriptions?: Prescription[];
+}
+
+// Type for JSON data (e.g., medical history, insurance)
+export type JSONValue =
+    | string
+    | number
+    | boolean
+    | null
+    | { [key: string]: JSONValue }
+    | JSONValue[]; 

@@ -2,17 +2,18 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom'; // Import useNavigate
 import { supabase } from '../lib/supabaseClient';
 // import { User } from '@supabase/supabase-js'; // Remove unused import
-import { Clinician, Visit, Patient } from '../types/app'; // Import types
+import { Clinician, Visit, Patient, Prescription } from '../types/app'; // Import types including Prescription
 import { useAuth } from '../context/AuthContext'; // Import useAuth
-import { FaUserCircle } from 'react-icons/fa'; // Import icon
+import { FaUserCircle, FaFileMedicalAlt } from 'react-icons/fa'; // Import icon
 
 // Helper type for patient details needed on dashboard
 // Assuming Patient type already includes medical_history: any or JSONValue
 type PatientSummary = Pick<Patient, 'id' | 'user_id' | 'medical_history' | 'profile_picture_url' | 'username'>;
 
 // Define type for the expected RPC response structure
+// The Visit type now includes optional prescriptions based on type definition
 interface ClinicianDashboardData {
-  recent_visits: (Visit & { patient_username?: string });
+  recent_visits: Visit[]; // Visit type now includes optional prescriptions
   associated_patients: PatientSummary[];
 }
 
@@ -229,7 +230,7 @@ const ClinicianDashboardPage: React.FC = () => {
                   ) : (
                     <FaUserCircle className="h-10 w-10 text-off-white/40 flex-shrink-0 group-hover:text-pastel-lavender transition-colors" />
                   )}
-                  <span className="truncate text-base font-medium">{p.username || `Patient ID: ${p.id.substring(0, 8)}...`}</span>
+                  <span className="truncate text-base font-medium">{p.username || 'Patient'}</span>
                 </li>
               ))}
             </ul>
@@ -246,7 +247,12 @@ const ClinicianDashboardPage: React.FC = () => {
                 <li key={visit.id} className="border-b border-border-color/70 pb-5 last:border-b-0">
                   <div className="flex justify-between items-baseline mb-2">
                     <p className="font-medium text-base text-pastel-blue">
-                      Patient: <span className="font-semibold text-white">{visit.patient_username || 'Unknown'}</span>
+                      Patient: <span
+                        className="font-semibold text-white hover:underline cursor-pointer"
+                        onClick={() => navigate(`/clinician/patient/${visit.patient_id}`)}
+                      >
+                        {visit.patient_username || 'Patient'}
+                      </span>
                     </p>
                     <p className="text-xs text-off-white/60">
                       {new Date(visit.visit_date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
@@ -254,9 +260,25 @@ const ClinicianDashboardPage: React.FC = () => {
                   </div>
                   <p className="text-sm text-off-white/80 mb-3">Reason: {visit.reason || 'N/A'}</p>
                   {visit.notes && (
-                    <div className="mt-3 pt-3 border-t border-border-color/50">
+                    <div className="mt-3 pt-3 border-t border-border-color/50 mb-3">
                       <p className="text-xs font-medium text-pastel-lavender mb-1">Notes:</p>
                       <p className="text-sm text-off-white/90 italic whitespace-pre-wrap bg-dark-input p-3 rounded-md">{visit.notes}</p>
+                    </div>
+                  )}
+
+                  {visit.prescriptions && visit.prescriptions.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-border-color/50">
+                      <p className="text-xs font-medium text-pastel-blue mb-2 flex items-center">
+                        <FaFileMedicalAlt className="mr-1.5" /> Prescriptions:
+                      </p>
+                      <ul className="space-y-2 pl-4">
+                        {visit.prescriptions.map(rx => (
+                          <li key={rx.id} className="text-xs text-off-white/80">
+                            <span className="font-medium text-off-white/90">{rx.medication}:</span> {rx.dosage || 'N/A'} ({rx.frequency || 'N/A'})
+                            {rx.notes && <span className="block text-off-white/70 italic pl-2">- {rx.notes}</span>}
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   )}
                 </li>

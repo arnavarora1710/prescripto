@@ -10,6 +10,8 @@ import PatientProfilePage from './pages/PatientProfilePage';
 import ClinicianDashboardPage from './pages/ClinicianDashboardPage';
 import PatientDetailPageClinicianView from './pages/PatientDetailPageClinicianView';
 import AddNewVisitPage from './pages/AddNewVisitPage';
+import PatientPrescriptionsPage from './pages/PatientPrescriptionsPage';
+import PatientVisitsPage from './pages/PatientVisitsPage';
 import { AuthProvider } from './context/AuthContext';
 import './App.css'; // Keep App.css for potential global overrides if needed
 
@@ -35,6 +37,8 @@ function App() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/patient/profile" element={<PatientProfilePage />} />
+            <Route path="/patient/prescriptions" element={<PatientPrescriptionsPage />} />
+            <Route path="/patient/visits" element={<PatientVisitsPage />} />
             <Route path="/clinician/dashboard" element={<ClinicianDashboardPage />} />
             <Route
               path="/clinician/patient/:patientId"

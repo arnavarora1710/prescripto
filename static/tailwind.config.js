@@ -11,17 +11,24 @@ module.exports = {
         'terminal-green': '#00ff00', // Classic green
         'electric-blue': '#00ffff', // Cyan/Electric blue
         'off-white': '#e0e0e0', // For body text
-        'dark-card': '#1a1a1a', // Darker card background
-        'border-color': '#333333', // Subtle border
+        'dark-card': '#1f1f1f', // Slightly lighter dark card
+        'dark-input': '#2a2a2a', // Darker input background
+        'border-color': '#444444', // Slightly lighter border
+        // Pastels
+        'pastel-lavender': '#d1c4e9',
+        'pastel-mint': '#c8e6c9',
+        'pastel-peach': '#ffccbc',
+        'pastel-blue': '#bbdefb',
       },
       fontFamily: {
         'mono': ['"Source Code Pro"', 'ui-monospace', 'Menlo', 'Monaco', '"Cascadia Mono"', '"Segoe UI Mono"', '"Roboto Mono"', '"Oxygen Mono"', '"Ubuntu Monospace"', '"Fira Mono"', '"Droid Sans Mono"', '"Courier New"', 'monospace'],
-        'sans': ['Inter', 'system-ui', 'sans-serif'], // Keep sans for potential fallbacks or specific elements
+        'sans': ['Lato', 'system-ui', 'sans-serif'],
       },
       animation: {
         'scanline': 'scanline 10s linear infinite',
         'glitch': 'glitch 1.5s infinite steps(8)',
         'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
+        'fade-in': 'fadeIn 0.5s ease-out forwards',
       },
       keyframes: {
         scanline: {
@@ -43,8 +50,16 @@ module.exports = {
         'pulse-glow': {
           '0%, 100%': { opacity: 0.7, filter: 'blur(2px)' },
           '50%': { opacity: 1, filter: 'blur(4px)' },
+        },
+        fadeIn: {
+          '0%': { opacity: 0, transform: 'translateY(10px)' },
+          '100%': { opacity: 1, transform: 'translateY(0)' },
         }
-      }
+      },
+      boxShadow: {
+        'pastel-glow-sm': '0 0 8px 1px rgba(209, 196, 233, 0.3)', // Subtle lavender glow
+        'pastel-glow-md': '0 0 15px 3px rgba(209, 196, 233, 0.3)',
+      },
     },
   },
   plugins: [],

@@ -26,78 +26,94 @@ const PatientProfilePage: React.FC = () => {
       updateProfile   // <-- Get update function
   } = useAuth(); 
 
-  // State for this page specifically
-  // const [patient, setPatient] = useState<Patient | null>(null); // Now comes from authProfile
+  // State for visits and prescriptions
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [visits, setVisits] = useState<Visit[]>([]);
-  const [loadingData, setLoadingData] = useState(true); // Separate loading for page data
-  const [errorData, setErrorData] = useState<string | null>(null);
+  // State for the FULL patient record fetched by this page
+  const [fullPatientData, setFullPatientData] = useState<Patient | null>(null);
+  // Separate loading/error state for this page's data
+  const [loadingPageData, setLoadingPageData] = useState(true);
+  const [errorPageData, setErrorPageData] = useState<string | null>(null);
   
   // State for upload
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Combine auth state with page-specific state
-  // Use unknown cast for potentially incompatible types
-  const patient = authProfile?.role === 'patient' ? authProfile as unknown as Patient : null; 
-  const loading = authLoading || loadingData;
-  const error = authError || errorData;
+  // Get the basic profile from context for checks and ID
+  const basicPatientProfile = authProfile?.role === 'patient' ? authProfile : null;
+  // Overall loading combines auth loading and page data loading
+  const loading = authLoading || loadingPageData;
+  const error = authError || errorPageData;
 
-  // Add logging here to check patient data when available
   useEffect(() => {
-      if (patient) {
-          console.log("Patient data for date check:", patient);
-      }
-  }, [patient]);
+    // Use the profileId from the basic context profile
+    const patientId = basicPatientProfile?.profileId;
 
-  // Fetch prescriptions and visits (profile comes from context)
-  useEffect(() => {
-    // Only fetch if we have a patient profile from auth
-    if (patient?.id) { // Use patient.id instead of patient.profileId
-      const patientId = patient.id; // Use patient.id
+    if (patientId) {
       const fetchPageData = async () => {
-          setLoadingData(true);
-          setErrorData(null);
+          setLoadingPageData(true);
+          setErrorPageData(null);
+          setFullPatientData(null); // Reset patient data on new fetch
           try {
-              // Use Promise.all to fetch concurrently
-              const [prescriptionsRes, visitsRes] = await Promise.all([
+              console.log(`PatientProfilePage: Fetching full data for patient ID: ${patientId}`);
+              // Fetch full patient details, prescriptions, and visits concurrently
+              const [patientRes, prescriptionsRes, visitsRes] = await Promise.all([
+                  supabase
+                      .from('patients')
+                      .select('*') // Fetch all columns for the patient
+                      .eq('id', patientId)
+                      .single(), // Expect only one patient record
                   supabase
                       .from('prescriptions')
-                      .select(`*`) // Fetching emails via RPC now, simplify select
+                      .select(`
+                          *,
+                          clinicians: clinician_id ( username )
+                      `)
                       .eq('patient_id', patientId)
                       .order('created_at', { ascending: false }),
                   supabase
                       .from('visits')
-                      .select(`*`) // Fetching emails via RPC now, simplify select
+                      .select(`
+                          *,
+                          clinicians: clinician_id ( username )
+                      `)
                       .eq('patient_id', patientId)
                       .order('visit_date', { ascending: false })
               ]);
 
-              if (prescriptionsRes.error) throw prescriptionsRes.error;
-              if (visitsRes.error) throw visitsRes.error;
+              // Check for errors
+              if (patientRes.error) throw new Error(`Patient Fetch Error: ${patientRes.error.message}`);
+              if (prescriptionsRes.error) throw new Error(`Prescriptions Fetch Error: ${prescriptionsRes.error.message}`);
+              if (visitsRes.error) throw new Error(`Visits Fetch Error: ${visitsRes.error.message}`);
 
-              // TODO: If clinician email is needed, consider adding to RPC or fetching separately
-              setPrescriptions(prescriptionsRes.data || []); 
+              if (!patientRes.data) throw new Error("Patient record not found.");
+
+              // Set all the fetched data
+              console.log("Patient Data:", patientRes.data);
+              console.log("Prescriptions Data (with clinician attempt):", prescriptionsRes.data);
+              console.log("Visits Data (with clinician attempt):", visitsRes.data);
+              setFullPatientData(patientRes.data); // Set the full patient data
+              setPrescriptions(prescriptionsRes.data || []);
               setVisits(visitsRes.data || []);
 
           } catch (err: any) {
               console.error("Error fetching patient page data:", err);
-              setErrorData(err.message || "Failed to load prescriptions/visits.");
+              setErrorPageData(err.message || "Failed to load page data.");
           } finally {
-              setLoadingData(false);
+              setLoadingPageData(false);
           }
       };
        fetchPageData();
     } else if (!authLoading) {
-        // If auth is done loading but no patient profile, set page loading false
-        setLoadingData(false); 
-        if (!patient) {
-            // Set an error if the logged-in user isn't a patient
-             setErrorData("Logged in user is not a patient or profile is missing.");
+        // If auth is done loading but no patient profile ID, set page loading false
+        setLoadingPageData(false);
+        if (!basicPatientProfile) {
+             setErrorPageData("Logged in user is not a patient or profile is missing.");
         }
     }
-  }, [patient?.id, authLoading]); // Re-run if patient ID changes or auth finishes loading - use patient.id
+    // Dependency: only re-run if the patient's profile ID changes or auth finishes loading
+  }, [basicPatientProfile?.profileId, authLoading]);
 
   const handleAddInsurance = () => {
     // TODO: Implement OCR logic or manual form for insurance
@@ -121,101 +137,75 @@ const PatientProfilePage: React.FC = () => {
           if (!event.target.files || event.target.files.length === 0) {
               throw new Error('You must select an image to upload.');
           }
-          if (!patient) {
-              throw new Error('Patient profile not loaded.');
+          // Use IDs from the basic profile from context
+          if (!basicPatientProfile?.userId || !basicPatientProfile?.profileId) {
+              throw new Error('Patient profile context not fully loaded.');
           }
 
           const file = event.target.files[0];
           const fileExt = file.name.split('.').pop();
-          // Use user_id from Patient type
-          const fileName = `${patient.user_id}-${Date.now()}.${fileExt}`; 
+          // Use userId for the filename
+          const fileName = `${basicPatientProfile.userId}-${Date.now()}.${fileExt}`;
           const filePath = `private/${fileName}`;
 
-          console.log(`Uploading to path: ${filePath}`); // Log the path
+          console.log(`Uploading to path: ${filePath}`);
 
-          // Upload to Supabase Storage
-          const { error: uploadError } = await supabase.storage
+          const { error: uploadErr } = await supabase.storage
               .from('profile-pictures')
               .upload(filePath, file, { upsert: true });
 
-          if (uploadError) {
-              console.error('Storage Upload Error:', uploadError);
-              throw new Error(`Storage Error: ${uploadError.message}`); // Include Supabase error
+          if (uploadErr) {
+              console.error('Storage Upload Error:', uploadErr);
+              throw new Error(`Storage Error: ${uploadErr.message}`);
           }
           console.log("Storage Upload Successful");
 
-          // Create a signed URL instead of public URL
-          // Set expiration time (e.g., 1 year in seconds)
-          const expiresIn = 60 * 60 * 24 * 365; 
-          const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+          const expiresIn = 60 * 60 * 24 * 365;
+          const { data: signedUrlData, error: signedUrlErr } = await supabase.storage
                 .from('profile-pictures')
                 .createSignedUrl(filePath, expiresIn);
 
-          if (signedUrlError) {
-              console.error("Signed URL Error:", signedUrlError);
-              // Attempt to remove the file if URL generation fails?
-              // await supabase.storage.from('profile-pictures').remove([filePath]);
+          if (signedUrlErr) {
+              console.error("Signed URL Error:", signedUrlErr);
               throw new Error('File uploaded, but failed to create signed URL.');
           }
-          
+
           const signedUrl = signedUrlData?.signedUrl;
           console.log("Signed URL:", signedUrl);
-
           if (!signedUrl) {
               throw new Error('File uploaded, but signed URL was unexpectedly null.');
           }
 
-          // Log the ID being used for the update
-          console.log(`Attempting to update patient profile ID: ${patient.id}`); // Use patient.id
-
-          // Update the patient table AND request the updated row back
+          // Use profileId for the update
+          console.log(`Attempting to update patient profile ID: ${basicPatientProfile.profileId}`);
           const { data: updatedPatientData, error: dbError } = await supabase
               .from('patients')
-              .update({ profile_picture_url: signedUrl }) // Store the signed URL (use profile_picture_url)
-              .eq('id', patient.id) // Use patient.id
-              .select() // Ask Supabase to return the updated row(s)
-              .maybeSingle(); // Expecting one row or null
+              .update({ profile_picture_url: signedUrl })
+              .eq('id', basicPatientProfile.profileId) // Use profileId here
+              .select()
+              .maybeSingle();
 
-          // Log the actual result of the update attempt
           console.log("DB Update Result:", { updatedPatientData, dbError });
+          if (dbError) throw new Error(`DB Update Error: ${dbError.message}`);
+          if (!updatedPatientData) console.error("DB Update returned no data. RLS?");
 
-          if (dbError) {
-              // ... handle DB error (maybe remove storage file) ...
-              throw new Error(`DB Update Error: ${dbError.message}`);
-          }
+          // Optimistic UI update for the context
+          updateProfile({ profilePictureUrl: signedUrl });
 
-          // Explicitly check if the update returned data
-          if (!updatedPatientData) {
-              console.error("DB Update returned no data. RLS issue or incorrect ID?");
-              // Optionally throw an error here or set a specific error message
-              // throw new Error("Database update failed to return updated profile data.");
-          }
-          // console.log("DB Update Successful"); // Keep previous log commented out or remove
+          // Update local full patient data optimistically as well
+          setFullPatientData(prevData => prevData ? { ...prevData, profile_picture_url: signedUrl } : null);
 
-          // --- OPTIMISTIC UI UPDATE --- 
-          console.log("Optimistically updating profile context with new URL...");
-          // Update context using profile_picture_url - Note: AuthContext uses profilePictureUrl, need consistency or mapping
-          // Assuming AuthContext's updateProfile handles mapping if needed.
-          updateProfile({ profilePictureUrl: signedUrl }); 
+          // Background refresh (optional but good practice)
+          setTimeout(() => refreshProfile(), 1500);
 
-          // Refresh Profile in AuthContext (still good practice for consistency)
-          console.log("Profile picture updated in DB, triggering delayed background refresh...");
-          setTimeout(() => {
-              console.log("Executing delayed refreshProfile...");
-              refreshProfile();
-          }, 1500); // Delay refresh by 1.5 seconds
-          
-          alert("Profile picture updated successfully!"); 
+          alert("Profile picture updated successfully!");
 
       } catch (error: any) {
           console.error(error);
           setUploadError(error.message || 'An unknown error occurred during upload.');
       } finally {
           setUploading(false);
-          // Reset file input value so the same file can be selected again if needed
-          if(fileInputRef.current) {
-              fileInputRef.current.value = "";
-          }
+          if(fileInputRef.current) fileInputRef.current.value = "";
       }
   };
   // --- End Upload Logic ---
@@ -228,126 +218,163 @@ const PatientProfilePage: React.FC = () => {
     return <div className="container mx-auto px-4 py-8 text-center text-red-500">Error: {error}</div>;
   }
 
-  if (!patient) {
+  // Use the fully fetched patient data for rendering checks and display
+  if (!fullPatientData) {
      return <div className="container mx-auto px-4 py-8 text-center text-white">No patient data found or user is not a patient.</div>;
   }
 
-  // Main return with patient data available
-  console.log("Rendering PatientProfilePage with patient:", patient); // Log again just before render
+  // Use fullPatientData for rendering details now
+  console.log("Rendering PatientProfilePage with fullPatientData:", fullPatientData);
   return (
-    <div className="container mx-auto px-4 py-8 text-white">
-      <h1 className="text-3xl font-bold text-electric-blue mb-6">Patient Profile</h1>
-      {uploadError && <p className="text-red-500 text-center mb-4 text-sm">Upload Error: {uploadError}</p>}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-         {/* Profile Info Card */}
-        <div className="md:col-span-1 bg-dark-card p-6 rounded-lg shadow-lg border border-off-white/10">
-          <h2 className="text-xl font-semibold text-electric-blue/90 mb-4">Your Information</h2>
-          {/* Profile Picture Display & Upload */}
-          <div className="mb-4 flex flex-col items-center">
-             {/* Use the property name from AuthContext */}
+    <div className="container mx-auto px-6 lg:px-8 py-12 text-off-white font-sans">
+      <h1 className="text-4xl font-bold text-white mb-10 text-center">Patient Profile</h1>
+      {uploadError && (
+          <div className="bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded-lg relative mb-6 text-center animate-fade-in">
+              <span className="block sm:inline">Upload Error: {uploadError}</span>
+          </div>
+      )}
+      
+      {/* Profile Card Section */} 
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 mb-12">
+        {/* Profile Info Card */} 
+        <div className="lg:col-span-1 bg-dark-card p-8 rounded-xl shadow-lg border border-border-color flex flex-col items-center animate-fade-in transition duration-300 hover:shadow-pastel-glow-sm"> 
+          {/* Profile Picture Display & Upload */} 
+          <div className="mb-6 relative group"> 
              {authProfile?.profilePictureUrl ? (
                 <img 
                     src={authProfile.profilePictureUrl} 
                     alt="Profile" 
-                    className="h-24 w-24 rounded-full object-cover mb-3 border-2 border-electric-blue/70"
+                    className="h-36 w-36 rounded-full object-cover border-4 border-pastel-lavender shadow-md"
                 />
              ) : (
-                <div className="h-24 w-24 rounded-full bg-dark-input flex items-center justify-center mb-3 border-2 border-off-white/20">
-                    <FaUserCircle className="h-16 w-16 text-off-white/40" />
+                <div className="h-36 w-36 rounded-full bg-dark-input flex items-center justify-center border-4 border-border-color text-off-white/30"> 
+                    <FaUserCircle className="h-28 w-28" />
                 </div>
              )}
-             <input 
-                type="file"
-                ref={fileInputRef}
-                onChange={handleProfilePictureUpload}
-                accept="image/png, image/jpeg, image/gif"
-                style={{ display: 'none' }} // Hide the default input
-                disabled={uploading}
-             />
-             <button
-                onClick={handleFileSelectClick}
-                disabled={uploading}
-                className="mt-2 px-4 py-1 text-xs border border-electric-blue/50 text-electric-blue rounded hover:bg-electric-blue/10 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {uploading ? 'Uploading...' : 'Change Picture'}
-             </button>
+             {/* Overlay Button */} 
+             <label className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 cursor-pointer">
+                 <span className="text-white text-sm font-medium">
+                    {uploading ? 'Uploading...' : 'Change'}
+                 </span>
+                 <input 
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleProfilePictureUpload}
+                    accept="image/png, image/jpeg, image/gif"
+                    className="sr-only"
+                    disabled={uploading}
+                 />
+             </label>
           </div>
-          {/* End Profile Picture */}
-          <p><span className="font-medium text-off-white/70">Email:</span> {patient.email || 'N/A'}</p>
-          <p><span className="font-medium text-off-white/70">Joined:</span> {patient.created_at ? new Date(patient.created_at).toLocaleDateString() : 'N/A'}</p>
-          {/* Add other basic profile fields here if needed */}
-        </div>
-
-         {/* History/Insurance Card */}
-        <div className="md:col-span-2 bg-dark-card p-6 rounded-lg shadow-lg border border-off-white/10">
-          <h2 className="text-xl font-semibold text-electric-blue/90 mb-4">Medical & Insurance Details</h2>
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-lg font-medium text-off-white/80 mb-2">Medical History & Allergens</h3>
-              <pre className="text-xs bg-dark-input p-3 rounded overflow-auto max-h-40 border border-off-white/20">{JSON.stringify(patient.medical_history, null, 2) || 'No data provided.'}</pre>
-              <button
-                  onClick={handleAddMedicalHistory}
-                  className="mt-2 px-3 py-1 text-xs border border-electric-blue/50 text-electric-blue rounded hover:bg-electric-blue/10 transition"
-              >
-                  Update History/Allergens
-              </button>
-            </div>
-            <div>
-              <h3 className="text-lg font-medium text-off-white/80 mb-2">Insurance Details</h3>
-              <pre className="text-xs bg-dark-input p-3 rounded overflow-auto max-h-40 border border-off-white/20">{JSON.stringify(patient.insurance_details, null, 2) || 'No data provided.'}</pre>
-              <button
-                  onClick={handleAddInsurance}
-                  className="mt-2 px-3 py-1 text-xs border border-electric-blue/50 text-electric-blue rounded hover:bg-electric-blue/10 transition"
-              >
-                  Add/Update Insurance (OCR)
-              </button>
-            </div>
+          {/* Basic Info */} 
+          <div className="text-center"> 
+              <p className="text-xl font-semibold text-white mb-1">{fullPatientData.username || 'N/A'}</p> 
+              <p className="text-sm text-off-white/60">
+                  Joined: {fullPatientData.created_at ? new Date(fullPatientData.created_at).toLocaleDateString() : 'N/A'}
+              </p>
           </div>
         </div>
-      </div>
 
-      {/* Prescriptions Section */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-semibold text-electric-blue/90 mb-4">Prescriptions</h2>
-        <div className="bg-dark-card p-6 rounded-lg shadow-lg border border-off-white/10">
-          {prescriptions.length > 0 ? (
-            <ul className="space-y-4">
-              {prescriptions.map((rx) => (
-                <li key={rx.id} className="border-b border-off-white/10 pb-3 last:border-b-0">
-                  <p className="font-semibold text-lg text-off-white/90">{rx.medication}</p>
-                  <p className="text-sm text-off-white/70">Dosage: {rx.dosage || 'N/A'} | Frequency: {rx.frequency || 'N/A'}</p>
-                  <p className="text-sm text-off-white/70">Prescriber: {rx.clinician_email || 'Unknown'}</p>
-                  <p className="text-sm text-off-white/70">Prescribed on: {new Date(rx.created_at).toLocaleDateString()}</p>
-                  {rx.notes && <p className="text-sm mt-1 text-off-white/60 italic">Notes: {rx.notes}</p>}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-off-white/70">No prescriptions found.</p>
-          )}
+        {/* History/Insurance Card */} 
+        <div className="lg:col-span-2 bg-dark-card p-8 rounded-xl shadow-lg border border-border-color animate-fade-in" style={{ animationDelay: '0.1s' }}> 
+          <h2 className="text-2xl font-semibold text-white border-b border-border-color pb-3 mb-6">Medical & Insurance Details</h2> 
+          <div className="space-y-8">
+            {/* Medical History */} 
+            <div>
+              <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-lg font-medium text-pastel-lavender">Medical History & Allergens</h3>
+              </div>
+              {fullPatientData.medical_history && typeof fullPatientData.medical_history === 'object' && Object.keys(fullPatientData.medical_history).length > 0 ? (
+                  <div className="text-sm bg-dark-input p-5 rounded-lg border border-border-color/50 space-y-3"> 
+                      {Object.entries(fullPatientData.medical_history).map(([key, value]) => (
+                          <div key={key} className="flex justify-between">
+                              <span className="font-medium capitalize text-off-white/70">{key.replace(/_/g, ' ')}:</span> 
+                              <span className="text-off-white text-right">{String(value)}</span>
+                          </div>
+                      ))}
+                  </div>
+              ) : (
+                  <p className="text-sm text-off-white/50 italic bg-dark-input p-5 rounded-lg border border-border-color/50">No medical history provided.</p>
+              )}
+            </div>
+            
+            {/* Insurance Details - Restore this section */}
+            <div>
+                <div className="flex justify-between items-center mb-3">
+                    <h3 className="text-lg font-medium text-pastel-lavender">Insurance Details</h3>
+                     {/* Placeholder button for potential future use */}
+                    {/* <button onClick={handleAddInsurance} className="...">Update</button> */} 
+                </div>
+                {/* Render insurance details similarly to medical history */} 
+                {fullPatientData.insurance_details && typeof fullPatientData.insurance_details === 'object' && Object.keys(fullPatientData.insurance_details).length > 0 ? (
+                    <div className="text-sm bg-dark-input p-5 rounded-lg border border-border-color/50 space-y-3"> 
+                        {Object.entries(fullPatientData.insurance_details).map(([key, value]) => (
+                            <div key={key} className="flex justify-between">
+                                <span className="font-medium capitalize text-off-white/70">{key.replace(/_/g, ' ')}:</span> 
+                                <span className="text-off-white text-right">{String(value)}</span>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-sm text-off-white/50 italic bg-dark-input p-5 rounded-lg border border-border-color/50">No insurance details provided.</p>
+                )}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Visits Section */}
-      <div>
-        <h2 className="text-2xl font-semibold text-electric-blue/90 mb-4">Visit History</h2>
-        <div className="bg-dark-card p-6 rounded-lg shadow-lg border border-off-white/10">
-          {visits.length > 0 ? (
-            <ul className="space-y-4">
-              {visits.map((visit) => (
-                <li key={visit.id} className="border-b border-off-white/10 pb-3 last:border-b-0">
-                  <p className="font-semibold text-lg text-off-white/90">Visit on {new Date(visit.visit_date).toLocaleString()}</p>
-                  <p className="text-sm text-off-white/70">Clinician: {visit.clinician_email || 'Unknown'}</p>
-                  <p className="text-sm text-off-white/70">Reason: {visit.reason || 'N/A'}</p>
-                  {visit.notes && <p className="text-sm mt-1 text-off-white/60 italic">Notes: {visit.notes}</p>}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-off-white/70">No visit history found.</p>
-          )}
-        </div>
+      {/* Bottom Section: Prescriptions & Visits */} 
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10"> 
+          {/* Prescriptions Section */} 
+          <div className="bg-dark-card p-8 rounded-xl shadow-lg border border-border-color animate-fade-in" style={{ animationDelay: '0.2s' }}> 
+            <h2 className="text-2xl font-semibold text-white border-b border-border-color pb-3 mb-6">Prescriptions</h2>
+            {prescriptions.length > 0 ? (
+              <ul className="space-y-6">
+                {prescriptions.map((rx) => (
+                  <li key={rx.id} className="border-b border-border-color/70 pb-5 last:border-b-0">
+                    <p className="font-semibold text-lg text-pastel-blue mb-1">{rx.medication}</p> 
+                    <p className="text-xs text-off-white/60 mb-1">Prescribed on: {new Date(rx.created_at).toLocaleDateString()}</p>
+                    <p className="text-sm text-off-white/80 mb-2">Dosage: {rx.dosage || 'N/A'} | Frequency: {rx.frequency || 'N/A'}</p>
+                    <p className="text-sm text-off-white/80">Prescriber: {(rx as any).clinicians?.username || 'Unknown'}</p>
+                    {rx.notes && (
+                        <div className="mt-3 pt-3 border-t border-border-color/50">
+                            <p className="text-xs font-medium text-pastel-lavender mb-1">Notes:</p>
+                            <p className="text-sm text-off-white/80 italic">{rx.notes}</p>
+                        </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-off-white/60 text-center py-4">No prescriptions found.</p>
+            )}
+          </div>
+
+          {/* Visits Section */} 
+          <div className="bg-dark-card p-8 rounded-xl shadow-lg border border-border-color animate-fade-in" style={{ animationDelay: '0.3s' }}> 
+            <h2 className="text-2xl font-semibold text-white border-b border-border-color pb-3 mb-6">Visit History</h2>
+            {visits.length > 0 ? (
+              <ul className="space-y-6">
+                {visits.map((visit) => (
+                   <li key={visit.id} className="border-b border-border-color/70 pb-5 last:border-b-0">
+                    <p className="font-medium text-lg text-pastel-blue mb-1">Visit on {new Date(visit.visit_date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p> 
+                     <p className="text-sm text-off-white/80 mb-2">Reason: {visit.reason || 'N/A'}</p>
+                    <p className="text-sm text-off-white/80">Clinician: {(visit as any).clinicians?.username || 'Unknown'}</p>
+                    {visit.notes && (
+                         <div className="mt-3 pt-3 border-t border-border-color/50">
+                             <p className="text-xs font-medium text-pastel-lavender mb-1">Notes:</p>
+                             <p className="text-sm text-off-white/80 italic whitespace-pre-wrap">{visit.notes}</p>
+                         </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-off-white/60 text-center py-4">No visit history found.</p>
+            )}
+          </div>
       </div>
+
     </div>
   );
 };

@@ -8,7 +8,7 @@ export interface UserProfileData {
   userId: string;    // The ID from auth.users
   role: 'patient' | 'clinician';
   profilePictureUrl: string | null;
-  email: string | undefined;
+  username: string | null; // Use username now
 }
 
 // Define the shape of the context value
@@ -61,15 +61,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         if (profileData && profileData.length > 0) {
             const fetchedProfile = profileData[0];
-            if (fetchedProfile.role && fetchedProfile.profile_id) {
+            if (fetchedProfile.role && fetchedProfile.profile_id && fetchedProfile.username !== undefined) {
                 console.log("AuthProvider: Profile data being set:", JSON.stringify(fetchedProfile));
                 setProfile({
                     profileId: fetchedProfile.profile_id,
                     userId: userId,
                     role: fetchedProfile.role,
-                    // Use the correct property name from the type
                     profilePictureUrl: fetchedProfile.profile_picture_url, 
-                    email: fetchedProfile.user_email
+                    username: fetchedProfile.username
                 });
                 // Resolve implicitly by not throwing
                 return;

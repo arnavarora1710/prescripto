@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap');
+/* Import Lato */
 @import 'tailwindcss';
 @tailwind base;
 @tailwind components;

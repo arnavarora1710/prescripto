@@ -2,7 +2,8 @@
 export interface UserProfile {
     id: string;       // Patient or Clinician table ID
     user_id: string;  // Corresponds to auth.users.id
-    email?: string;   // Fetched separately from auth.users if needed
+    username: string | null; // Add username
+    // email?: string; // Remove email if username is primary identifier
     profile_picture_url?: string | null; // Add profile picture URL
     created_at: string;
     updated_at: string;
@@ -38,7 +39,7 @@ export interface Visit {
     reason: string | null;
     notes: string | null;
     created_at: string;
-    // Optionally include clinician/patient details if joined
-    clinician_email?: string;
-    patient_email?: string;
+    // Update to use username
+    // clinician_email?: string;
+    patient_username?: string; // Changed from patient_email
 } 

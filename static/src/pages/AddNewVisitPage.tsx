@@ -921,6 +921,21 @@ Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
                              {isFinalizing ? 'Finalizing...' : 'Finalize Prescriptions'}
                         </button>
                     </div>
+
+                    {/* Regeneration Button - Appears only when possible */} 
+                    {canRegenerate && (
+                         <div className="mt-4 flex justify-center">
+                             <button 
+                                 type="button"
+                                 onClick={handleRegenerate}
+                                 disabled={loadingRegenerate}
+                                 className="flex items-center justify-center px-4 py-2 border border-orange-400 text-orange-400 rounded-md hover:bg-orange-400/10 disabled:opacity-50 transition text-sm font-medium"
+                             >
+                                 {loadingRegenerate ? <FaSpinner className="animate-spin mr-2" /> : <FaCheckCircle className="mr-2" />} 
+                                 {loadingRegenerate ? 'Regenerating...' : 'Regenerate Suggestions (Based on Rejections)'}
+                             </button>
+                         </div>
+                    )}
                 </div>
             )}
 

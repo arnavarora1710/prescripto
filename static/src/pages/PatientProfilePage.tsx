@@ -1,12 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 // We might not need the User type from supabase-js directly anymore
 // import { User } from '@supabase/supabase-js'; 
-import { Patient, Prescription, Visit } from '../types/app'; // Import types
+import { Patient, Prescription, Visit, JSONValue } from '../types/app'; // Import types, including JSONValue
 import { useAuth } from '../context/AuthContext'; // Import useAuth
-import { FaUserCircle } from 'react-icons/fa';
+import { FaUserCircle, FaPlus, FaCamera, FaTimes } from 'react-icons/fa';
 import jsPDF from 'jspdf'; // <-- Import jsPDF
 import autoTable from 'jspdf-autotable'; // <-- Import autoTable
+import Webcam from 'react-webcam'; // <-- Import Webcam
+
+// --- Add Type for OCR Response ---
+interface OcrResponseDto {
+  extractedText: string | null;
+}
+// --- End Type Definition ---
 
 // Define a type for the expected RPC response structure
 /* // Remove unused interface
@@ -42,6 +49,32 @@ const PatientProfilePage: React.FC = () => {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
+  // --- State for Allergy Input ---
+  const [allergyNameInput, setAllergyNameInput] = useState('');
+  const [allergyDescInput, setAllergyDescInput] = useState('');
+  const [updatingHistory, setUpdatingHistory] = useState(false);
+  const [historyUpdateError, setHistoryUpdateError] = useState<string | null>(null);
+  // --- End Allergy State ---
+
+  // --- State for Insurance Input & OCR ---
+  const [insuranceProvider, setInsuranceProvider] = useState('');
+  const [policyNumber, setPolicyNumber] = useState('');
+  const [groupNumber, setGroupNumber] = useState(''); // Optional field
+  const [updatingInsurance, setUpdatingInsurance] = useState(false);
+  const [insuranceUpdateError, setInsuranceUpdateError] = useState<string | null>(null);
+
+  const insuranceFileInputRef = React.useRef<HTMLInputElement>(null);
+  const webcamRef = React.useRef<Webcam>(null); // <-- Ref for webcam
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrError, setOcrError] = useState<string | null>(null);
+  const [ocrResultText, setOcrResultText] = useState<string | null>(null);
+  // --- End Insurance/OCR State ---
+
+  // --- State for Camera ---
+  const [showCamera, setShowCamera] = useState(false);
+  const [facingMode, setFacingMode] = useState('environment'); // 'user' or 'environment'
+  // --- End Camera State ---
+
   // Get the basic profile from context for checks and ID
   const basicPatientProfile = authProfile?.role === 'patient' ? authProfile : null;
   // Overall loading combines auth loading and page data loading
@@ -73,7 +106,8 @@ const PatientProfilePage: React.FC = () => {
                           clinicians: clinician_id ( username )
                       `)
               .eq('patient_id', patientId)
-              .order('created_at', { ascending: false }),
+              .order('created_at', { ascending: false })
+              .limit(5), // <-- Limit prescriptions
             supabase
               .from('visits')
               .select(`
@@ -82,6 +116,7 @@ const PatientProfilePage: React.FC = () => {
                       `)
               .eq('patient_id', patientId)
               .order('visit_date', { ascending: false })
+              .limit(5) // <-- Limit visits
           ]);
 
           // Check for errors
@@ -116,6 +151,17 @@ const PatientProfilePage: React.FC = () => {
     }
     // Dependency: only re-run if the patient's profile ID changes or auth finishes loading
   }, [basicPatientProfile?.profileId, authLoading]);
+
+  // --- Populate Manual Fields from existing data ---
+  useEffect(() => {
+    if (fullPatientData?.insurance_details && typeof fullPatientData.insurance_details === 'object') {
+      const details = fullPatientData.insurance_details as Record<string, string>;
+      setInsuranceProvider(details.provider || '');
+      setPolicyNumber(details.policy_number || '');
+      setGroupNumber(details.group_number || '');
+    }
+  }, [fullPatientData?.insurance_details]);
+  // --- End Populate Fields ---
 
   // const handleAddInsurance = () => {
   //   // TODO: Implement OCR logic or manual form for insurance
@@ -305,6 +351,195 @@ const PatientProfilePage: React.FC = () => {
   };
   // --- End PDF Generation Function ---
 
+  // --- Handle Add/Update Medical History Item (including Allergies) --- 
+  const handleAddHistoryItem = async () => {
+    const key = allergyNameInput.trim(); // Use name input as the key
+    const value = allergyDescInput.trim(); // Use description input as the value
+
+    if (!key) { // Require a key/name
+      setHistoryUpdateError("Item name/key cannot be empty.");
+      return;
+    }
+    if (!fullPatientData?.id) {
+      setHistoryUpdateError("Cannot update history: Patient data not fully loaded.");
+      return;
+    }
+
+    setUpdatingHistory(true);
+    setHistoryUpdateError(null);
+
+    try {
+      // Clone existing medical history or initialize if null/undefined/not an object
+      let currentHistory: Record<string, JSONValue> = {};
+      if (fullPatientData.medical_history &&
+        typeof fullPatientData.medical_history === 'object' &&
+        !Array.isArray(fullPatientData.medical_history) &&
+        fullPatientData.medical_history !== null) {
+        currentHistory = JSON.parse(JSON.stringify(fullPatientData.medical_history));
+      }
+
+      // Add/update the key-value pair directly in the history object
+      currentHistory[key] = value || 'N/A'; // Assign value, default to 'N/A' if empty
+
+      // Update the database
+      const { data: updatedPatient, error: updateError } = await supabase
+        .from('patients')
+        .update({ medical_history: currentHistory as JSONValue })
+        .eq('id', fullPatientData.id)
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
+      if (!updatedPatient) throw new Error("Update successful but no patient data returned.");
+
+      // Update local state
+      setFullPatientData(updatedPatient);
+      setAllergyNameInput(''); // Clear the name input field
+      setAllergyDescInput(''); // Clear the description input field
+      console.log("Medical history updated successfully");
+
+    } catch (err: any) {
+      console.error("Error updating medical history:", err);
+      setHistoryUpdateError(`Failed to update history: ${err.message}`);
+    } finally {
+      setUpdatingHistory(false);
+    }
+  };
+  // --- End Handle Add History Item ---
+
+  // --- Handle Save Insurance (Manual) ---
+  const handleSaveInsurance = async () => {
+    if (!fullPatientData?.id) {
+      setInsuranceUpdateError("Cannot update insurance: Patient data not fully loaded.");
+      return;
+    }
+    // Basic validation: require provider and policy number?
+    if (!insuranceProvider.trim() || !policyNumber.trim()) {
+      setInsuranceUpdateError("Provider and Policy Number are required.");
+      return;
+    }
+
+    setUpdatingInsurance(true);
+    setInsuranceUpdateError(null);
+
+    const newInsuranceDetails = {
+      provider: insuranceProvider.trim(),
+      policy_number: policyNumber.trim(),
+      group_number: groupNumber.trim() || null, // Store null if empty
+      // Add other fields as needed
+    };
+
+    try {
+      const { data: updatedPatient, error: updateError } = await supabase
+        .from('patients')
+        .update({ insurance_details: newInsuranceDetails as JSONValue })
+        .eq('id', fullPatientData.id)
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
+      if (!updatedPatient) throw new Error("Update successful but no patient data returned.");
+
+      // Update local state
+      setFullPatientData(updatedPatient);
+      alert("Insurance details updated successfully!"); // Simple feedback
+
+    } catch (err: any) {
+      console.error("Error updating insurance details:", err);
+      setInsuranceUpdateError(`Failed to save insurance details: ${err.message}`);
+    } finally {
+      setUpdatingInsurance(false);
+    }
+  };
+  // --- End Handle Save Insurance ---
+
+  // --- Centralized OCR Request Function ---
+  const processOcrRequest = async (base64Image: string | null) => {
+    if (!base64Image) {
+      setOcrError("No image data provided for OCR.");
+      return;
+    }
+
+    setOcrLoading(true);
+    setOcrError(null);
+    setOcrResultText(null);
+
+    try {
+      console.log("Sending image to OCR endpoint...");
+      const backendUrl = '/ocr'; // Adjust if needed
+
+      const response = await fetch(backendUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ base64Image: base64Image }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Could not parse error response' }));
+        throw new Error(`OCR request failed: ${response.status} - ${errorData?.message || response.statusText}`);
+      }
+
+      const result: OcrResponseDto = await response.json();
+      console.log("OCR Result Text:", result.extractedText);
+      setOcrResultText(result.extractedText || "No text extracted.");
+      alert("OCR complete. Review the extracted text and manually update fields if needed.");
+
+    } catch (err: any) {
+      console.error("Error during OCR processing:", err);
+      setOcrError(`OCR Error: ${err.message}`);
+    } finally {
+      setOcrLoading(false);
+    }
+  };
+  // --- End Centralized OCR Function ---
+
+  // --- Handle Insurance Card OCR Upload (File) ---
+  const handleInsuranceOcrUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!event.target.files || event.target.files.length === 0) return;
+    const file = event.target.files[0];
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = async () => {
+      // Call central processor
+      await processOcrRequest(reader.result as string);
+      // Reset file input value
+      if (insuranceFileInputRef.current) {
+        insuranceFileInputRef.current.value = "";
+      }
+    };
+    reader.onerror = (error) => {
+      console.error("Error reading file:", error);
+      setOcrError("Error reading file.");
+      setOcrLoading(false); // Ensure loading stops
+    };
+  };
+  // --- End OCR File Upload Handler ---
+
+  // --- Camera Handling Functions ---
+  const handleOpenCamera = (mode: 'user' | 'environment') => {
+    setFacingMode(mode);
+    setShowCamera(true);
+    setOcrError(null); // Clear errors when opening camera
+    setOcrResultText(null);
+  };
+
+  const handleCloseCamera = () => {
+    setShowCamera(false);
+    setOcrError(null);
+  };
+
+  const handleCapture = useCallback(async () => {
+    if (webcamRef.current) {
+      const imageSrc = webcamRef.current.getScreenshot();
+      setShowCamera(false); // Close camera after capture
+      await processOcrRequest(imageSrc); // Process the captured image
+    }
+  }, [webcamRef, processOcrRequest]); // Add processOcrRequest dependency
+  // --- End Camera Handling ---
+
   if (loading) {
     return <div className="container mx-auto px-4 py-8 text-center text-white">Loading patient data...</div>;
   }
@@ -370,119 +605,292 @@ const PatientProfilePage: React.FC = () => {
           </div>
         </div>
 
-        {/* History/Insurance Card */}
+        {/* Combined Medical History & Insurance Card */}
         <div className="lg:col-span-2 bg-dark-card p-8 rounded-xl shadow-lg border border-border-color animate-fade-in" style={{ animationDelay: '0.1s' }}>
           <h2 className="text-2xl font-semibold text-white border-b border-border-color pb-3 mb-6">Medical & Insurance Details</h2>
           <div className="space-y-8">
-            {/* Medical History */}
+            {/* Combined Medical History Display (including allergies) */}
             <div>
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="text-lg font-medium text-pastel-lavender">Medical History & Allergens</h3>
-              </div>
-              {fullPatientData.medical_history && typeof fullPatientData.medical_history === 'object' && Object.keys(fullPatientData.medical_history).length > 0 ? (
-                <div className="text-sm bg-dark-input p-5 rounded-lg border border-border-color/50 space-y-3">
-                  {Object.entries(fullPatientData.medical_history).map(([key, value]) => (
+              <h3 className="text-lg font-medium text-pastel-lavender mb-3">Medical History & Allergies</h3>
+              <div className="text-sm bg-dark-input p-5 rounded-lg border border-border-color/50 space-y-3 mb-6">
+                {fullPatientData.medical_history &&
+                  typeof fullPatientData.medical_history === 'object' &&
+                  fullPatientData.medical_history !== null &&
+                  !Array.isArray(fullPatientData.medical_history) && // Ensure it's an object
+                  Object.keys(fullPatientData.medical_history).length > 0 ? (
+                  Object.entries(fullPatientData.medical_history).map(([key, value]) => (
                     <div key={key} className="flex justify-between">
                       <span className="font-medium capitalize text-off-white/70">{key.replace(/_/g, ' ')}:</span>
-                      <span className="text-off-white text-right">{String(value)}</span>
+                      {/* Display value, handle potential non-string values gracefully */}
+                      <span className="text-off-white text-right">{typeof value === 'string' ? value : JSON.stringify(value)}</span>
                     </div>
-                  ))}
+                  ))
+                ) : (
+                  <p className="text-sm text-off-white/50 italic">No medical history or allergy information provided.</p>
+                )}
+              </div>
+
+              {/* Add/Update History Item Input */}
+              <div className="mt-4 space-y-2">
+                <label className="block text-sm font-medium text-off-white/70 mb-1">
+                  Add/Update History Item (Condition, Allergy, etc.)
+                </label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <input
+                    id="allergyNameInput" // Keeping ID same for now
+                    type="text"
+                    value={allergyNameInput}
+                    onChange={(e) => setAllergyNameInput(e.target.value)}
+                    placeholder="Item Name (e.g., Penicillin, Hypertension)"
+                    className="px-3 py-1.5 rounded-md bg-dark-card border border-off-white/20 text-white placeholder-off-white/50 focus:outline-none focus:ring-1 focus:ring-electric-blue focus:border-transparent transition duration-150 text-sm"
+                    disabled={updatingHistory}
+                  />
+                  <input
+                    id="allergyDescInput" // Keeping ID same for now
+                    type="text"
+                    value={allergyDescInput}
+                    onChange={(e) => setAllergyDescInput(e.target.value)}
+                    placeholder="Description/Details (e.g., Rash, Diagnosed 2020)"
+                    className="px-3 py-1.5 rounded-md bg-dark-card border border-off-white/20 text-white placeholder-off-white/50 focus:outline-none focus:ring-1 focus:ring-electric-blue focus:border-transparent transition duration-150 text-sm"
+                    disabled={updatingHistory}
+                  />
                 </div>
-              ) : (
-                <p className="text-sm text-off-white/50 italic bg-dark-input p-5 rounded-lg border border-border-color/50">No medical history provided.</p>
-              )}
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleAddHistoryItem}
+                    disabled={updatingHistory || !allergyNameInput.trim()}
+                    className="px-3 py-1.5 bg-electric-blue/20 text-electric-blue hover:bg-electric-blue/30 border border-electric-blue/50 rounded-md text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 flex items-center"
+                  >
+                    <FaPlus className="mr-1.5 h-3 w-3" /> Add / Update
+                  </button>
+                </div>
+                {historyUpdateError && <p className="text-red-400 text-xs mt-1">{historyUpdateError}</p>}
+              </div>
             </div>
 
-            {/* Insurance Details - Restore this section */}
+            {/* Insurance Details Section */}
             <div>
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="text-lg font-medium text-pastel-lavender">Insurance Details</h3>
-                {/* Placeholder button for potential future use */}
-                {/* <button onClick={handleAddInsurance} className="...">Update</button> */}
-              </div>
-              {/* Render insurance details similarly to medical history */}
-              {fullPatientData.insurance_details && typeof fullPatientData.insurance_details === 'object' && Object.keys(fullPatientData.insurance_details).length > 0 ? (
-                <div className="text-sm bg-dark-input p-5 rounded-lg border border-border-color/50 space-y-3">
-                  {Object.entries(fullPatientData.insurance_details).map(([key, value]) => (
+              <h3 className="text-lg font-medium text-pastel-lavender mb-3">Insurance Details</h3>
+
+              {/* Display Existing/Saved Insurance */}
+              <div className="text-sm bg-dark-input p-5 rounded-lg border border-border-color/50 space-y-3 mb-6">
+                {fullPatientData.insurance_details &&
+                  typeof fullPatientData.insurance_details === 'object' &&
+                  fullPatientData.insurance_details !== null &&
+                  Object.keys(fullPatientData.insurance_details).length > 0 ? (
+                  Object.entries(fullPatientData.insurance_details).map(([key, value]) => (
                     <div key={key} className="flex justify-between">
                       <span className="font-medium capitalize text-off-white/70">{key.replace(/_/g, ' ')}:</span>
-                      <span className="text-off-white text-right">{String(value)}</span>
+                      <span className="text-off-white text-right">{String(value) || 'N/A'}</span>
                     </div>
-                  ))}
+                  ))
+                ) : (
+                  <p className="text-sm text-off-white/50 italic">No insurance details provided.</p>
+                )}
+              </div>
+
+              {/* Manual Input Fields */}
+              <div className="space-y-3 mb-4">
+                <div>
+                  <label htmlFor="insuranceProvider" className="block text-xs font-medium text-off-white/70 mb-1">Provider Name</label>
+                  <input
+                    id="insuranceProvider"
+                    type="text"
+                    value={insuranceProvider}
+                    onChange={(e) => setInsuranceProvider(e.target.value)}
+                    placeholder="e.g., Blue Cross"
+                    className="w-full px-3 py-1.5 rounded-md bg-dark-card border border-off-white/20 text-white placeholder-off-white/50 focus:outline-none focus:ring-1 focus:ring-electric-blue focus:border-transparent transition duration-150 text-sm"
+                    disabled={updatingInsurance}
+                  />
                 </div>
-              ) : (
-                <p className="text-sm text-off-white/50 italic bg-dark-input p-5 rounded-lg border border-border-color/50">No insurance details provided.</p>
-              )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="policyNumber" className="block text-xs font-medium text-off-white/70 mb-1">Policy/Member Number</label>
+                    <input
+                      id="policyNumber"
+                      type="text"
+                      value={policyNumber}
+                      onChange={(e) => setPolicyNumber(e.target.value)}
+                      placeholder="e.g., X123456789"
+                      className="w-full px-3 py-1.5 rounded-md bg-dark-card border border-off-white/20 text-white placeholder-off-white/50 focus:outline-none focus:ring-1 focus:ring-electric-blue focus:border-transparent transition duration-150 text-sm"
+                      disabled={updatingInsurance}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="groupNumber" className="block text-xs font-medium text-off-white/70 mb-1">Group Number (Optional)</label>
+                    <input
+                      id="groupNumber"
+                      type="text"
+                      value={groupNumber}
+                      onChange={(e) => setGroupNumber(e.target.value)}
+                      placeholder="e.g., G9876"
+                      className="w-full px-3 py-1.5 rounded-md bg-dark-card border border-off-white/20 text-white placeholder-off-white/50 focus:outline-none focus:ring-1 focus:ring-electric-blue focus:border-transparent transition duration-150 text-sm"
+                      disabled={updatingInsurance}
+                    />
+                  </div>
+                </div>
+                {insuranceUpdateError && <p className="text-red-400 text-xs mt-1">{insuranceUpdateError}</p>}
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleSaveInsurance}
+                    disabled={updatingInsurance}
+                    className="px-4 py-1.5 bg-pastel-blue/20 text-pastel-blue hover:bg-pastel-blue/30 border border-pastel-blue/50 rounded-md text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 flex items-center"
+                  >
+                    {updatingInsurance ? 'Saving...' : 'Save Manual Details'}
+                  </button>
+                </div>
+              </div>
+
+              {/* OCR Section */}
+              <div className="mt-6 pt-6 border-t border-border-color/50">
+                <h4 className="text-md font-medium text-pastel-lavender/90 mb-3">Upload/Scan Card for OCR</h4>
+                {/* --- Camera View (Conditional) --- */}
+                {showCamera && (
+                  <div className="fixed inset-0 bg-black/80 flex flex-col items-center justify-center z-50 p-4 animate-fade-in">
+                    <Webcam
+                      audio={false}
+                      ref={webcamRef}
+                      screenshotFormat="image/jpeg"
+                      width={640} // Adjust width as needed
+                      height={480} // Adjust height as needed
+                      videoConstraints={{
+                        width: 1280,
+                        height: 720,
+                        facingMode: facingMode
+                      }}
+                      className="rounded-lg border-4 border-electric-blue mb-4 max-w-full h-auto"
+                    />
+                    <div className="flex space-x-4">
+                      <button onClick={handleCapture} className="px-6 py-3 bg-electric-blue text-white rounded-lg font-semibold text-lg">
+                        Capture Photo
+                      </button>
+                      <button onClick={handleCloseCamera} className="px-4 py-2 bg-gray-600 text-white rounded-lg">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {/* --- End Camera View --- */}
+
+                {!showCamera && (
+                  <div className="flex items-center flex-wrap gap-3 mb-3">
+                    {/* File Upload Button */}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      ref={insuranceFileInputRef}
+                      onChange={handleInsuranceOcrUpload}
+                      className="hidden"
+                      disabled={ocrLoading || showCamera}
+                    />
+                    <button
+                      onClick={() => insuranceFileInputRef.current?.click()}
+                      disabled={ocrLoading || showCamera}
+                      className="px-4 py-1.5 bg-dark-input hover:bg-dark-card border border-off-white/30 text-off-white/90 rounded-md text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 flex items-center"
+                    >
+                      {ocrLoading && !showCamera ? 'Processing...' : <><FaCamera className="mr-1.5" /> Choose Image File</>}
+                    </button>
+
+                    {/* Camera Buttons */}
+                    <button
+                      onClick={() => handleOpenCamera('environment')} // Back camera
+                      disabled={ocrLoading || showCamera}
+                      className="px-4 py-1.5 bg-dark-input hover:bg-dark-card border border-off-white/30 text-off-white/90 rounded-md text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 flex items-center"
+                    >
+                      <FaCamera className="mr-1.5" /> Scan with Camera
+                    </button>
+                    {/* Optional: Add button for front camera if needed */}
+                    {/* <button onClick={() => handleOpenCamera('user')} ... >Scan with Front Camera</button> */}
+                  </div>
+                )}
+
+                {ocrLoading && <p className="text-sm text-pastel-blue mb-2">Processing OCR...</p>}
+                {ocrError && <p className="text-red-400 text-xs mb-2">{ocrError}</p>}
+
+                {ocrResultText && (
+                  <div className="mt-4">
+                    <label htmlFor="ocrResult" className="block text-xs font-medium text-off-white/70 mb-1">Extracted Text (Review & Copy)</label>
+                    <textarea
+                      id="ocrResult"
+                      readOnly
+                      value={ocrResultText}
+                      rows={5}
+                      className="w-full px-3 py-2 rounded-lg bg-dark-input border border-border-color/70 text-off-white/80 placeholder-off-white/50 text-xs"
+                      placeholder="Extracted text will appear here..."
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Bottom Section: Prescriptions & Visits */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-        {/* Prescriptions Section */}
-        <div className="bg-dark-card p-8 rounded-xl shadow-lg border border-border-color animate-fade-in" style={{ animationDelay: '0.2s' }}>
-          <h2 className="text-2xl font-semibold text-white border-b border-border-color pb-3 mb-6">Prescriptions</h2>
-          {prescriptions.length > 0 ? (
-            <ul className="space-y-6">
-              {prescriptions.map((rx) => (
-                <li key={rx.id} className="border-b border-border-color/70 pb-5 last:border-b-0">
-                  <div className="flex justify-between items-start gap-4">
-                    <div className="flex-grow">
-                      <p className="font-semibold text-lg text-pastel-blue mb-1">{rx.medication}</p>
-                      <p className="text-xs text-off-white/60 mb-1">Prescribed on: {new Date(rx.created_at).toLocaleDateString()}</p>
-                      <p className="text-sm text-off-white/80 mb-2">Dosage: {rx.dosage || 'N/A'} | Frequency: {rx.frequency || 'N/A'}</p>
-                      {/* Ensure clinician username is accessed correctly */}
-                      <p className="text-sm text-off-white/80">Prescriber: {rx.clinicians?.username || 'Unknown'}</p>
-                      {rx.notes && (
-                        <div className="mt-3 pt-3 border-t border-border-color/50">
-                          <p className="text-xs font-medium text-pastel-lavender mb-1">Notes:</p>
-                          <p className="text-sm text-off-white/80 italic">{rx.notes}</p>
-                        </div>
-                      )}
+        {/* Bottom Section: Prescriptions & Visits */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+          {/* Prescriptions Section */}
+          <div className="bg-dark-card p-8 rounded-xl shadow-lg border border-border-color animate-fade-in" style={{ animationDelay: '0.2s' }}>
+            <h2 className="text-2xl font-semibold text-white border-b border-border-color pb-3 mb-6">Prescriptions</h2>
+            {prescriptions.length > 0 ? (
+              <ul className="space-y-6">
+                {prescriptions.map((rx) => (
+                  <li key={rx.id} className="border-b border-border-color/70 pb-5 last:border-b-0">
+                    <div className="flex justify-between items-start gap-4">
+                      <div className="flex-grow">
+                        <p className="font-semibold text-lg text-pastel-blue mb-1">{rx.medication}</p>
+                        <p className="text-xs text-off-white/60 mb-1">Prescribed on: {new Date(rx.created_at).toLocaleDateString()}</p>
+                        <p className="text-sm text-off-white/80 mb-2">Dosage: {rx.dosage || 'N/A'} | Frequency: {rx.frequency || 'N/A'}</p>
+                        {/* Ensure clinician username is accessed correctly */}
+                        <p className="text-sm text-off-white/80">Prescriber: {rx.clinicians?.username || 'Unknown'}</p>
+                        {rx.notes && (
+                          <div className="mt-3 pt-3 border-t border-border-color/50">
+                            <p className="text-xs font-medium text-pastel-lavender mb-1">Notes:</p>
+                            <p className="text-sm text-off-white/80 italic">{rx.notes}</p>
+                          </div>
+                        )}
+                      </div>
+                      {/* Download Button for Patient */}
+                      <button
+                        onClick={() => generatePrescriptionPdfForPatient(rx)}
+                        className="px-3 py-1 mt-1 text-xs border border-electric-blue/50 text-electric-blue rounded-md hover:bg-electric-blue/10 transition flex-shrink-0"
+                        title="Download Prescription PDF"
+                      >
+                        Download PDF
+                      </button>
                     </div>
-                    {/* Download Button for Patient */}
-                    <button
-                      onClick={() => generatePrescriptionPdfForPatient(rx)}
-                      className="px-3 py-1 mt-1 text-xs border border-electric-blue/50 text-electric-blue rounded-md hover:bg-electric-blue/10 transition flex-shrink-0"
-                      title="Download Prescription PDF"
-                    >
-                      Download PDF
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-off-white/60 text-center py-4">No prescriptions found.</p>
-          )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-off-white/60 text-center py-4">No prescriptions found.</p>
+            )}
+          </div>
+
+          {/* Visits Section */}
+          <div className="bg-dark-card p-8 rounded-xl shadow-lg border border-border-color animate-fade-in" style={{ animationDelay: '0.3s' }}>
+            <h2 className="text-2xl font-semibold text-white border-b border-border-color pb-3 mb-6">Visit History</h2>
+            {visits.length > 0 ? (
+              <ul className="space-y-6">
+                {visits.map((visit) => (
+                  <li key={visit.id} className="border-b border-border-color/70 pb-5 last:border-b-0">
+                    <p className="font-medium text-lg text-pastel-blue mb-1">Visit on {new Date(visit.visit_date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                    <p className="text-sm text-off-white/80 mb-2">Reason: {visit.reason || 'N/A'}</p>
+                    <p className="text-sm text-off-white/80">Clinician: {(visit as any).clinicians?.username || 'Unknown'}</p>
+                    {visit.notes && (
+                      <div className="mt-3 pt-3 border-t border-border-color/50">
+                        <p className="text-xs font-medium text-pastel-lavender mb-1">Notes:</p>
+                        <p className="text-sm text-off-white/80 italic whitespace-pre-wrap">{visit.notes}</p>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-off-white/60 text-center py-4">No visit history found.</p>
+            )}
+          </div>
         </div>
 
-        {/* Visits Section */}
-        <div className="bg-dark-card p-8 rounded-xl shadow-lg border border-border-color animate-fade-in" style={{ animationDelay: '0.3s' }}>
-          <h2 className="text-2xl font-semibold text-white border-b border-border-color pb-3 mb-6">Visit History</h2>
-          {visits.length > 0 ? (
-            <ul className="space-y-6">
-              {visits.map((visit) => (
-                <li key={visit.id} className="border-b border-border-color/70 pb-5 last:border-b-0">
-                  <p className="font-medium text-lg text-pastel-blue mb-1">Visit on {new Date(visit.visit_date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p>
-                  <p className="text-sm text-off-white/80 mb-2">Reason: {visit.reason || 'N/A'}</p>
-                  <p className="text-sm text-off-white/80">Clinician: {(visit as any).clinicians?.username || 'Unknown'}</p>
-                  {visit.notes && (
-                    <div className="mt-3 pt-3 border-t border-border-color/50">
-                      <p className="text-xs font-medium text-pastel-lavender mb-1">Notes:</p>
-                      <p className="text-sm text-off-white/80 italic whitespace-pre-wrap">{visit.notes}</p>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-off-white/60 text-center py-4">No visit history found.</p>
-          )}
-        </div>
       </div>
-
     </div>
   );
 };

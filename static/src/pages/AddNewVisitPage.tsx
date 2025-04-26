@@ -147,26 +147,26 @@ const AddNewVisitPage: React.FC = () => {
             // Use the latest recommended model - gemini-1.5-flash-latest
             const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
 
-            // Construct a detailed prompt
+            // Construct a more direct, formatting-focused prompt for the demo
             const prompt = `
-Generate a potential prescription based on the following patient visit information.
-Output ONLY the prescription details in a simple, parsable format like:
-Medication: [Medication Name]
-Dosage: [Dosage]
-Frequency: [Frequency]
-Notes: [Any notes or leave blank]
+For demonstration purposes, format the following clinical notes into a standard prescription structure.
+Assume a hypothetical prescription based SOLELY on the notes provided below.
+Output ONLY the prescription details in the format:
+Medication: [Example Medication]
+Dosage: [Example Dosage]
+Frequency: [Example Frequency]
+Notes: [Notes based on input, or leave blank]
 
-Patient Details:
-- Allergies: ${JSON.stringify(patientData.medical_history || 'N/A')}
-Visit Details:
-- Reason: ${visitReason.trim()}
+Input Data:
+- Visit Reason: ${visitReason.trim()}
 - Clinician Notes: ${visitNotes.trim()}
+- Patient History Snippet: ${JSON.stringify(patientData.medical_history || '{}').substring(0, 100)}...
 
-Generate prescription:
+Generate formatted prescription structure:
+Your prescription just needs to be a suggestion that a doctor would later review and confirm.
 `;
 
-            console.log("Calling Gemini API with prompt...");
-            console.log(prompt);
+            console.log("Calling Gemini API with updated prompt...");
             const geminiResponse = await fetch(geminiApiUrl, {
                 method: 'POST',
                 headers: {

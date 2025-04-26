@@ -24,6 +24,7 @@
     "react-icons": "^5.5.0",
     "react-router-dom": "^6.30.0",
     "react-scroll": "^1.9.3",
+    "react-webcam": "^7.2.0",
     "tailwindcss": "^4.1.4"
   },
   "devDependencies": {

@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom'; // Import useNavigate
+import { useNavigate, Link } from 'react-router-dom'; // Import useNavigate and Link
 import { supabase } from '../lib/supabaseClient';
 // import { User } from '@supabase/supabase-js'; // Remove unused import
 import { Clinician, Visit, Patient, Prescription } from '../types/app'; // Import types - Added Prescription
 import { useAuth } from '../context/AuthContext'; // Import useAuth
-import { FaUserCircle, FaFileMedicalAlt, FaPlus, FaEdit, FaSpinner, FaArrowRight, FaRegCommentDots, FaNotesMedical } from 'react-icons/fa'; // Removed FaSignOutAlt
+import { FaUserCircle, FaFileMedicalAlt, FaPlus, FaEdit, FaSpinner, FaArrowRight, FaRegCommentDots, FaNotesMedical, FaCalendarAlt, FaAngleRight } from 'react-icons/fa'; // Removed FaSignOutAlt
 import { formatDistanceToNow } from 'date-fns'; // For relative time
 
 // Helper type for patient details needed on dashboard
@@ -151,7 +151,7 @@ const ClinicianDashboardPage: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="container mx-auto px-4 py-8 text-center text-white"><FaSpinner className="animate-spin inline-block mr-3 h-6 w-6 text-pastel-blue" /> Loading dashboard data...</div>;
+    return <div className="container mx-auto px-4 py-8 text-center text-white"><FaSpinner className="animate-spin inline-block mr-3 h-6 w-6 text-primary-accent" /> Loading dashboard data...</div>;
   }
 
   if (error) {
@@ -166,7 +166,7 @@ const ClinicianDashboardPage: React.FC = () => {
         <p className="text-off-white/70 mb-6">You must be logged in as a clinician to view this page.</p>
         <button
           onClick={() => navigate('/login')}
-          className="px-6 py-2 border border-electric-blue text-electric-blue rounded-md hover:bg-electric-blue hover:text-dark-bg transition duration-200">
+          className="px-6 py-2 border border-primary-accent text-primary-accent rounded-md hover:bg-primary-accent hover:text-dark-bg transition duration-200 active:scale-95">
           Go to Login
         </button>
       </div>
@@ -181,10 +181,18 @@ const ClinicianDashboardPage: React.FC = () => {
         <div className="flex items-center gap-4">
           <button
             onClick={() => navigate('/clinician/add-visit')}
-            className="flex items-center px-4 py-2 border border-electric-blue rounded-md shadow-sm text-sm font-medium text-electric-blue bg-transparent hover:bg-electric-blue hover:text-dark-bg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-bg focus:ring-electric-blue transition duration-150 whitespace-nowrap group"
+            className="flex items-center px-4 py-2 border border-primary-accent rounded-md shadow-sm text-sm font-medium text-primary-accent bg-transparent hover:bg-primary-accent hover:text-dark-bg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-bg focus:ring-primary-accent transition duration-150 whitespace-nowrap group active:scale-95"
           >
             <FaPlus className="mr-2 h-4 w-4 group-hover:rotate-90 transition-transform duration-200" />
             New Visit
+          </button>
+          <button
+            onClick={() => { /* TODO: Implement logout */ alert('Logout functionality not yet implemented in context.'); }}
+            className="flex items-center px-4 py-2 border border-border-color text-off-white/70 rounded-md hover:bg-dark-card hover:text-red-400 hover:border-red-500/50 transition duration-150 text-sm group"
+            title="Logout"
+          >
+            <FaEdit className="mr-2 h-4 w-4 transition-colors duration-150" />
+            Logout
           </button>
         </div>
       </div>
@@ -197,17 +205,17 @@ const ClinicianDashboardPage: React.FC = () => {
       )}
 
       {/* Profile Card */}
-      <div className="bg-dark-card p-6 sm:p-8 rounded-xl shadow-lg border border-border-color mb-12 flex flex-col md:flex-row items-center space-y-6 md:space-y-0 md:space-x-8 animate-fade-in hover:shadow-pastel-glow-sm transition-shadow duration-300">
+      <div className="bg-dark-card p-6 sm:p-8 rounded-xl shadow-lg border border-border-color mb-12 flex flex-col md:flex-row items-center space-y-6 md:space-y-0 md:space-x-8 animate-fade-in hover:shadow-primary-glow-sm transition-shadow duration-300">
         <div className="flex-shrink-0 relative group">
           {/* Profile Picture */}
           {authProfile?.profilePictureUrl ? (
             <img
               src={authProfile.profilePictureUrl}
               alt="Profile"
-              className="h-24 w-24 rounded-full object-cover border-4 border-pastel-lavender shadow-md transition-transform duration-300 group-hover:scale-105"
+              className="h-24 w-24 rounded-full object-cover border-4 border-primary-accent shadow-md transition-transform duration-300 group-hover:scale-105"
             />
           ) : (
-            <div className="h-24 w-24 rounded-full bg-dark-input flex items-center justify-center border-4 border-border-color text-off-white/30 transition-colors duration-300 group-hover:border-pastel-lavender">
+            <div className="h-24 w-24 rounded-full bg-dark-input flex items-center justify-center border-4 border-border-color text-off-white/30 transition-colors duration-300 group-hover:border-primary-accent">
               <FaUserCircle className="h-16 w-16" />
             </div>
           )}
@@ -239,14 +247,14 @@ const ClinicianDashboardPage: React.FC = () => {
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 xl:gap-10">
         {/* Patient List Column */}
-        <div className="lg:col-span-1 bg-dark-card p-6 sm:p-8 rounded-xl shadow-lg border border-border-color animate-fade-in transition-shadow hover:shadow-blue-glow-sm" style={{ animationDelay: '0.1s' }}>
+        <div className="lg:col-span-1 bg-dark-card p-6 sm:p-8 rounded-xl shadow-lg border border-border-color animate-fade-in transition-shadow hover:shadow-primary-glow-sm" style={{ animationDelay: '0.1s' }}>
           <h2 className="text-xl sm:text-2xl font-semibold text-white border-b border-border-color pb-3 mb-6">Your Patients ({patients.length})</h2>
           {patients.length > 0 ? (
             <ul className="space-y-3 max-h-[calc(100vh-500px)] overflow-y-auto pr-2 -mr-2 custom-scrollbar"> {/* Added custom-scrollbar class */}
               {patients.map((p) => (
                 <li
                   key={p.id}
-                  className="text-off-white/90 bg-dark-input/30 hover:bg-electric-blue/10 border border-transparent hover:border-electric-blue/30 cursor-pointer p-3 rounded-lg flex items-center space-x-4 transition duration-200 group"
+                  className="text-off-white/90 bg-dark-input/30 hover:bg-primary-accent/10 border border-transparent hover:border-primary-accent/30 cursor-pointer p-3 rounded-lg flex items-center space-x-4 transition duration-200 group"
                   onClick={() => navigate(`/clinician/patient/${p.id}`)}
                   title={`View details for ${p.username || 'patient'}`}
                 >
@@ -255,10 +263,10 @@ const ClinicianDashboardPage: React.FC = () => {
                     <img
                       src={p.profile_picture_url}
                       alt={`Profile of ${p.username || 'patient'}`}
-                      className="h-10 w-10 rounded-full object-cover flex-shrink-0 border-2 border-border-color group-hover:border-pastel-lavender transition-colors duration-200"
+                      className="h-10 w-10 rounded-full object-cover flex-shrink-0 border-2 border-border-color group-hover:border-primary-accent transition-colors duration-200"
                     />
                   ) : (
-                    <FaUserCircle className="h-10 w-10 text-off-white/40 flex-shrink-0 group-hover:text-pastel-lavender transition-colors duration-200" />
+                    <FaUserCircle className="h-10 w-10 text-off-white/40 flex-shrink-0 group-hover:text-primary-accent transition-colors duration-200" />
                   )}
                   {/* Patient Name */}
                   <span className="truncate text-base font-medium flex-grow group-hover:text-white transition-colors duration-200">{p.username || 'Patient'}</span>
@@ -272,62 +280,34 @@ const ClinicianDashboardPage: React.FC = () => {
         </div>
 
         {/* Recent Visits Column */}
-        <div className="lg:col-span-2 bg-dark-card p-6 sm:p-8 rounded-xl shadow-lg border border-border-color animate-fade-in transition-shadow hover:shadow-blue-glow-sm" style={{ animationDelay: '0.2s' }}>
+        <div className="lg:col-span-2 bg-dark-card p-6 rounded-xl shadow-lg border border-border-color animate-fade-in transition-shadow hover:shadow-primary-glow-sm" style={{ animationDelay: '0.2s' }}>
           <h2 className="text-xl sm:text-2xl font-semibold text-white border-b border-border-color pb-3 mb-6">Recent Visits</h2>
           {recentVisits.length > 0 ? (
-            <ul className="space-y-6 max-h-[calc(100vh-400px)] overflow-y-auto pr-2 -mr-2 custom-scrollbar"> {/* Added max height & scroll */}
+            <ul className="divide-y divide-border-color/30">
               {recentVisits.map((visit) => (
-                <li key={visit.id} className="border-b border-border-color/50 pb-5 last:border-b-0">
-                  {/* Visit Header */}
-                  <div className="flex justify-between items-baseline mb-2 gap-4">
-                    <p className="font-medium text-base text-pastel-blue">
-                      Patient: <span
-                        className="font-semibold text-white hover:underline cursor-pointer hover:text-electric-blue transition-colors duration-150"
-                        onClick={() => navigate(`/clinician/patient/${visit.patient_id}`)}
-                      >
-                        {visit.patient_username || 'Patient'}
-                      </span>
-                    </p>
-                    {/* Relative Time */}
-                    <p className="text-xs text-off-white/60 flex-shrink-0" title={new Date(visit.visit_date).toLocaleString()}>
-                      {formatDistanceToNow(new Date(visit.visit_date), { addSuffix: true })}
-                    </p>
-                  </div>
-                  {/* Visit Reason */}
-                  <p className="text-sm text-off-white/80 mb-3 flex items-center">
-                    <FaRegCommentDots className="mr-2 h-3.5 w-3.5 text-pastel-lavender/70 flex-shrink-0" />
-                    Reason: {visit.reason || <span className="italic text-off-white/60 ml-1">Not specified</span>}
-                  </p>
-
-                  {/* Visit Notes Section */}
-                  {visit.notes && (
-                    <div className="mt-3 pt-3 border-t border-border-color/30 mb-3">
-                      <p className="text-xs font-medium text-pastel-lavender mb-1.5 flex items-center">
-                        <FaNotesMedical className="mr-1.5 h-3.5 w-3.5" />
-                        Visit Notes:
+                <li key={visit.id}>
+                  <Link
+                    to={`/visit/${visit.id}`}
+                    className="flex items-center justify-between p-3 sm:p-4 hover:bg-dark-input/50 transition duration-150 group"
+                  >
+                    <div className="flex-grow mr-4">
+                      <p className="font-medium text-sm sm:text-base text-primary-accent flex items-center mb-1">
+                        <FaUserCircle className="mr-2 h-4 w-4 text-primary-accent/80 flex-shrink-0" />
+                        Patient: {visit.patient_username || 'Patient'}
                       </p>
-                      <p className="text-sm text-off-white/90 italic whitespace-pre-wrap bg-dark-input p-3 rounded-md border border-border-color/50 font-mono text-xs leading-relaxed">
-                        {visit.notes}
-                      </p>
+                      <div className="text-xs text-off-white/70 flex flex-col sm:flex-row sm:items-center sm:gap-x-4">
+                        <span className="flex items-center mb-0.5 sm:mb-0" title={new Date(visit.visit_date).toLocaleString()}>
+                          <FaCalendarAlt className="mr-1.5 h-3 w-3 text-off-white/50 flex-shrink-0" />
+                          {formatDistanceToNow(new Date(visit.visit_date), { addSuffix: true })}
+                        </span>
+                        <span className="flex items-start">
+                          <FaRegCommentDots className="mr-1.5 mt-0.5 h-3 w-3 text-off-white/50 flex-shrink-0" />
+                          <span>Reason: {visit.reason ? (visit.reason.length > 40 ? visit.reason.substring(0, 40) + '...' : visit.reason) : <span className="italic text-off-white/60">N/A</span>}</span>
+                        </span>
+                      </div>
                     </div>
-                  )}
-
-                  {/* Prescriptions Section */}
-                  {visit.prescriptions && visit.prescriptions.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-border-color/30">
-                      <p className="text-xs font-medium text-pastel-blue mb-2 flex items-center">
-                        <FaFileMedicalAlt className="mr-1.5 h-3.5 w-3.5" /> Prescriptions ({visit.prescriptions.length}):
-                      </p>
-                      <ul className="space-y-2 pl-2">
-                        {visit.prescriptions.map(rx => (
-                          <li key={rx.id} className="text-xs text-off-white/80 bg-dark-input/50 p-2.5 rounded border border-border-color/40 shadow-sm">
-                            <span className="font-medium text-off-white/90">{rx.medication}:</span> {rx.dosage || 'N/A'} ({rx.frequency || 'N/A'})
-                            {rx.notes && <span className="block text-off-white/70 italic pl-2 mt-1 pt-1 border-t border-border-color/30">- {rx.notes}</span>}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                    <FaAngleRight className="h-5 w-5 text-off-white/40 group-hover:text-primary-accent group-hover:translate-x-1 transition-all duration-200 flex-shrink-0" />
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -336,22 +316,6 @@ const ClinicianDashboardPage: React.FC = () => {
           )}
         </div>
       </div>
-      {/* Custom Scrollbar CSS - Add this if you don't have it globally */}
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar {
-            width: 6px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-            background-color: rgba(187, 222, 251, 0.3); /* pastel-blue with transparency */
-            border-radius: 3px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background-color: rgba(187, 222, 251, 0.5);
-        }
-      `}</style>
     </div>
   );
 };

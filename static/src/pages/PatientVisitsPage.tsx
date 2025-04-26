@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Visit } from '../types/app';
 import { useAuth } from '../context/AuthContext';
-import { FaSpinner, FaArrowLeft, FaCalendarAlt, FaUserMd, FaNotesMedical, FaRegCommentDots } from 'react-icons/fa';
-import { useNavigate } from 'react-router-dom';
+import { FaSpinner, FaArrowLeft, FaCalendarAlt, FaUserMd, FaNotesMedical, FaRegCommentDots, FaAngleRight } from 'react-icons/fa';
+import { useNavigate, Link } from 'react-router-dom';
 import { format } from 'date-fns';
 
 const PatientVisitsPage: React.FC = () => {
@@ -75,7 +75,7 @@ const PatientVisitsPage: React.FC = () => {
 
             {loading && (
                 <div className="text-center py-10">
-                    <FaSpinner className="animate-spin inline-block mr-3 h-6 w-6 text-pastel-blue" /> Loading visit history...
+                    <FaSpinner className="animate-spin inline-block mr-3 h-6 w-6 text-primary-accent" /> Loading visit history...
                 </div>
             )}
 
@@ -86,36 +86,31 @@ const PatientVisitsPage: React.FC = () => {
             )}
 
             {!loading && !error && (
-                <div className="bg-dark-card p-6 sm:p-8 rounded-xl shadow-lg border border-border-color animate-fade-in">
+                <div className="animate-fade-in">
                     {visits.length > 0 ? (
-                        <ul className="space-y-8">
+                        <ul className="bg-dark-card border border-border-color rounded-xl shadow-lg divide-y divide-border-color/30">
                             {visits.map((visit) => (
-                                <li key={visit.id} className="border-b border-border-color/40 pb-6 last:border-b-0">
-                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">
-                                        <p className="font-semibold text-base sm:text-lg text-pastel-blue flex items-center">
-                                            <FaCalendarAlt className="mr-2.5 h-4 w-4 text-pastel-blue/80" />
-                                            Visit on {format(new Date(visit.visit_date), 'PPPp')}
-                                        </p>
-                                        <p className="text-sm text-off-white/70 flex items-center">
-                                            <FaUserMd className="mr-2 h-4 w-4 text-pastel-lavender/70" />
-                                            Clinician: {visit.clinicians?.username || 'Unknown'}
-                                        </p>
-                                    </div>
-                                    <p className="text-sm text-off-white/80 mb-3 flex items-start">
-                                        <FaRegCommentDots className="mr-2 mt-0.5 h-4 w-4 text-pastel-lavender/70 flex-shrink-0" />
-                                        <span><span className="font-medium text-off-white/90">Reason:</span> {visit.reason || <span className="italic text-off-white/60">N/A</span>}</span>
-                                    </p>
-                                    {visit.notes && (
-                                        <div className="mt-4 pt-4 border-t border-border-color/30">
-                                            <p className="text-xs font-medium text-pastel-lavender mb-1.5 flex items-center">
-                                                <FaNotesMedical className="mr-1.5 h-3.5 w-3.5" />
-                                                Visit Notes:
+                                <li key={visit.id}>
+                                    <Link
+                                        to={`/visit/${visit.id}`}
+                                        className="flex items-center justify-between p-4 sm:p-5 hover:bg-dark-input/50 transition duration-150 group"
+                                    >
+                                        <div className="flex-grow mr-4">
+                                            <p className="font-medium text-sm sm:text-base text-primary-accent flex items-center mb-1">
+                                                <FaCalendarAlt className="mr-2 h-3.5 w-3.5 text-primary-accent/80 flex-shrink-0" />
+                                                Visit on {format(new Date(visit.visit_date), 'PPP')}
                                             </p>
-                                            <p className="text-sm text-off-white/80 italic whitespace-pre-wrap bg-dark-input/50 p-3 rounded-md border border-border-color/30 font-mono text-xs leading-relaxed">
-                                                {visit.notes}
+                                            <p className="text-xs text-off-white/70 flex items-center mb-1">
+                                                <FaUserMd className="mr-2 h-3.5 w-3.5 text-off-white/50 flex-shrink-0" />
+                                                Clinician: {visit.clinicians?.username || 'Unknown'}
+                                            </p>
+                                            <p className="text-xs text-off-white/70 flex items-start">
+                                                <FaRegCommentDots className="mr-2 mt-0.5 h-3 w-3 text-off-white/50 flex-shrink-0" />
+                                                <span>Reason: {visit.reason ? (visit.reason.length > 60 ? visit.reason.substring(0, 60) + '...' : visit.reason) : <span className="italic text-off-white/60">N/A</span>}</span>
                                             </p>
                                         </div>
-                                    )}
+                                        <FaAngleRight className="h-5 w-5 text-off-white/40 group-hover:text-primary-accent group-hover:translate-x-1 transition-all duration-200 flex-shrink-0" />
+                                    </Link>
                                 </li>
                             ))}
                         </ul>

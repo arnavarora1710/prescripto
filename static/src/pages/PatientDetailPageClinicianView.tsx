@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { Patient, Visit, Prescription } from '../types/app';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { FaArrowLeft, FaUser, FaHeartbeat, FaNotesMedical, FaCalendarAlt, FaUserMd, FaEdit, FaSave, FaTimes, FaFileDownload, FaSpinner, FaRegCommentDots, FaFilePrescription, FaStickyNote, FaPills } from 'react-icons/fa';
+import { FaArrowLeft, FaUser, FaHeartbeat, FaNotesMedical, FaCalendarAlt, FaUserMd, FaEdit, FaSave, FaTimes, FaFileDownload, FaSpinner, FaRegCommentDots, FaFilePrescription, FaStickyNote, FaPills, FaAngleRight } from 'react-icons/fa';
 import { format, formatDistanceToNow } from 'date-fns';
 
 // Define the structure expected from the RPC call (Updated Visit)
@@ -204,7 +204,7 @@ const PatientDetailPageClinicianView: React.FC = () => {
   // --- End Edit Notes Logic ---
 
   if (loading) {
-    return <div className="container mx-auto px-4 py-16 text-center text-white"><FaSpinner className="animate-spin inline-block mr-3 h-6 w-6 text-pastel-blue" /> Loading patient details...</div>;
+    return <div className="container mx-auto px-4 py-16 text-center text-white"><FaSpinner className="animate-spin inline-block mr-3 h-6 w-6 text-primary-accent" /> Loading patient details...</div>;
   }
 
   if (error) {
@@ -226,16 +226,16 @@ const PatientDetailPageClinicianView: React.FC = () => {
         </button>
         <div className="text-center flex-grow">
           <h1 className="text-3xl sm:text-4xl font-bold text-white mb-1">Patient Details</h1>
-          <p className="text-lg text-pastel-lavender font-medium">{patient.username || 'Patient'}</p>
+          <p className="text-lg text-primary-accent font-medium">{patient.username || 'Patient'}</p>
         </div>
         <div className="w-24"></div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 xl:gap-10">
         <div className="lg:col-span-1 space-y-8">
-          <div className="bg-dark-card p-6 sm:p-8 rounded-xl shadow-lg border border-border-color animate-fade-in transition-shadow hover:shadow-pastel-glow-sm" style={{ animationDelay: '0.1s' }}>
+          <div className="bg-dark-card p-6 sm:p-8 rounded-xl shadow-lg border border-border-color animate-fade-in transition-shadow hover:shadow-primary-glow-sm" style={{ animationDelay: '0.1s' }}>
             <h2 className="text-xl sm:text-2xl font-semibold text-white border-b border-border-color pb-3 mb-6 flex items-center">
-              <FaUser className="mr-3 text-pastel-lavender" /> Patient Information
+              <FaUser className="mr-3 text-primary-accent" /> Patient Information
             </h2>
             <div className="space-y-3 text-sm">
               <div className="flex items-center"><FaUser className="mr-2 w-4 text-off-white/50" /><span className="font-medium text-off-white/70 w-24">Username:</span> <span className="text-off-white/90">{patient.username || 'N/A'}</span></div>
@@ -243,9 +243,9 @@ const PatientDetailPageClinicianView: React.FC = () => {
             </div>
           </div>
 
-          <div className="bg-dark-card p-6 sm:p-8 rounded-xl shadow-lg border border-border-color animate-fade-in transition-shadow hover:shadow-pastel-glow-sm" style={{ animationDelay: '0.2s' }}>
+          <div className="bg-dark-card p-6 sm:p-8 rounded-xl shadow-lg border border-border-color animate-fade-in transition-shadow hover:shadow-primary-glow-sm" style={{ animationDelay: '0.2s' }}>
             <h2 className="text-xl sm:text-2xl font-semibold text-white border-b border-border-color pb-3 mb-6 flex items-center">
-              <FaHeartbeat className="mr-3 text-pastel-lavender" /> Medical History
+              <FaHeartbeat className="mr-3 text-primary-accent" /> Medical History
             </h2>
             {patient.medical_history && typeof patient.medical_history === 'object' && Object.keys(patient.medical_history).length > 0 ? (
               <ul className="text-sm space-y-3">
@@ -267,115 +267,35 @@ const PatientDetailPageClinicianView: React.FC = () => {
             <FaNotesMedical className="mr-3 text-pastel-blue" /> Visit History ({visits.length})
           </h2>
           {visits.length > 0 ? (
-            <ul className="space-y-8 max-h-[calc(100vh-300px)] overflow-y-auto pr-2 -mr-2 custom-scrollbar">
+            <ul className="divide-y divide-border-color/30 max-h-[calc(100vh-300px)] overflow-y-auto pr-2 -mr-2 custom-scrollbar">
               {visits.map((visit) => (
-                <li key={visit.id} className="border-b border-border-color/70 pb-6 last:border-b-0">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-baseline mb-3 gap-2">
-                    <p className="font-medium text-base text-pastel-blue flex items-center">
-                      <FaCalendarAlt className="mr-2.5 h-4 w-4 text-pastel-blue/80 flex-shrink-0" />
-                      Visit on {format(new Date(visit.visit_date), 'PPPp')}
-                    </p>
-                    <div className="flex flex-col sm:items-end gap-1 text-xs text-off-white/70">
-                      <span title={new Date(visit.visit_date).toLocaleString()}> ({formatDistanceToNow(new Date(visit.visit_date), { addSuffix: true })})</span>
-                      <span className="flex items-center">
-                        <FaUserMd className="mr-1.5 h-3.5 w-3.5 text-pastel-lavender/70" />
-                        Clinician: {visit.clinicians?.username || 'N/A'}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-sm text-off-white/80 mb-4 flex items-start">
-                    <FaRegCommentDots className="mr-2 mt-0.5 h-4 w-4 text-pastel-lavender/70 flex-shrink-0" />
-                    <span><span className="font-medium text-off-white/90">Reason:</span> {visit.reason || <span className="italic text-off-white/60">Not specified</span>}</span>
-                  </p>
-                  <div className="mb-4">
-                    <div className="flex justify-between items-center mb-1.5">
-                      <h4 className="text-xs font-medium text-pastel-lavender flex items-center">
-                        <FaNotesMedical className="mr-1.5 h-3.5 w-3.5" />
-                        Visit Notes:
-                      </h4>
-                      {editingVisitId !== visit.id && (
-                        <button
-                          onClick={() => handleEditClick(visit)}
-                          className="px-2 py-0.5 text-xs border border-pastel-lavender/50 text-pastel-lavender rounded hover:bg-pastel-lavender/10 transition flex-shrink-0 flex items-center"
-                        >
-                          <FaEdit className="mr-1 h-3 w-3" /> Edit
-                        </button>
+                <li key={visit.id}>
+                  <Link
+                    to={`/visit/${visit.id}`}
+                    className="flex items-center justify-between p-3 sm:p-4 hover:bg-dark-input/50 transition duration-150 group"
+                  >
+                    <div className="flex-grow mr-4">
+                      <p className="font-medium text-sm sm:text-base text-pastel-blue flex items-center mb-1">
+                        <FaCalendarAlt className="mr-2 h-4 w-4 text-pastel-blue/80 flex-shrink-0" />
+                        Visit on {format(new Date(visit.visit_date), 'PPP')}
+                      </p>
+                      <div className="text-xs text-off-white/70 flex flex-col sm:flex-row sm:items-center sm:gap-x-4">
+                        <span className="flex items-center mb-0.5 sm:mb-0" title={new Date(visit.visit_date).toLocaleString()}>
+                          Relative: {formatDistanceToNow(new Date(visit.visit_date), { addSuffix: true })}
+                        </span>
+                        <span className="flex items-start">
+                          <FaRegCommentDots className="mr-1.5 mt-0.5 h-3 w-3 text-off-white/50 flex-shrink-0" />
+                          <span>Reason: {visit.reason ? (visit.reason.length > 40 ? visit.reason.substring(0, 40) + '...' : visit.reason) : <span className="italic text-off-white/60">N/A</span>}</span>
+                        </span>
+                      </div>
+                      {visit.prescriptions && visit.prescriptions.length > 0 && (
+                        <p className="text-xs mt-1 text-pastel-blue/70 flex items-center">
+                          <FaFilePrescription className="mr-1.5 h-3 w-3" /> Contains Prescriptions ({visit.prescriptions.length})
+                        </p>
                       )}
                     </div>
-                    {editingVisitId === visit.id ? (
-                      <div className="space-y-3 mt-2 animate-fade-in">
-                        <textarea
-                          value={editNotes}
-                          onChange={(e) => setEditNotes(e.target.value)}
-                          rows={5}
-                          className="w-full px-3 py-2 rounded-lg bg-dark-input border border-border-color/70 text-white placeholder-off-white/50 focus:outline-none focus:ring-2 focus:ring-pastel-lavender focus:border-transparent transition duration-150 text-sm font-mono"
-                        />
-                        <div className="flex items-center space-x-3">
-                          <button
-                            onClick={() => handleSaveNotes(visit.id)}
-                            disabled={isSavingNotes}
-                            className="flex items-center justify-center px-4 py-1.5 min-w-[80px] text-sm border border-pastel-lavender text-pastel-lavender hover:bg-pastel-lavender/10 rounded-md transition duration-200 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {isSavingNotes ? <FaSpinner className="animate-spin h-4 w-4" /> : <><FaSave className="mr-1.5 h-3 w-3" /> Save</>}
-                          </button>
-                          <button
-                            onClick={handleCancelEdit}
-                            disabled={isSavingNotes}
-                            className="flex items-center justify-center px-3 py-1.5 text-sm border border-border-color hover:bg-dark-input text-off-white/80 rounded-md transition disabled:opacity-50"
-                          >
-                            <FaTimes className="mr-1 h-3 w-3" /> Cancel
-                          </button>
-                        </div>
-                        {error && editingVisitId === visit.id && (
-                          <p className="text-red-400 text-xs pt-1">Error saving: {error}</p>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-off-white/90 whitespace-pre-wrap bg-dark-input/50 p-3 rounded-md border border-border-color/30 font-mono text-xs leading-relaxed">
-                        {visit.notes || <span className="italic text-off-white/60">No notes recorded.</span>}
-                      </p>
-                    )}
-                  </div>
-
-                  {visit.prescriptions && visit.prescriptions.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-border-color/30">
-                      <h4 className="text-xs font-medium text-pastel-blue mb-2 flex items-center">
-                        <FaFilePrescription className="mr-1.5 h-3.5 w-3.5" />
-                        Prescriptions ({visit.prescriptions.length}):
-                      </h4>
-                      <ul className="space-y-3">
-                        {visit.prescriptions.map(rx => (
-                          <li key={rx.id} className="text-xs bg-dark-input/50 p-3 rounded-lg border border-border-color/40 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                            <div className="flex-grow">
-                              <p className="font-semibold text-off-white mb-1 flex items-center">
-                                <FaPills className="mr-2 h-3.5 w-3.5 text-pastel-blue/70 flex-shrink-0" />
-                                {rx.medication}
-                              </p>
-                              <div className="flex items-center text-off-white/70 pl-5 text-[0.7rem] gap-x-3">
-                                {rx.dosage && <span>Dosage: <span className="font-medium text-off-white/90">{rx.dosage}</span></span>}
-                                {rx.frequency && <span>Frequency: <span className="font-medium text-off-white/90">{rx.frequency}</span></span>}
-                              </div>
-                              {rx.notes && (
-                                <div className="pl-5 mt-1 pt-1 border-t border-border-color/20">
-                                  <p className="text-off-white/70 text-[0.7rem] flex items-start">
-                                    <FaStickyNote className="mr-1.5 mt-0.5 h-3 w-3 text-pastel-lavender/60 flex-shrink-0" />
-                                    <span className="italic">{rx.notes}</span>
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-                            <button
-                              onClick={() => generatePrescriptionPdf(rx, visit)}
-                              className="flex items-center flex-shrink-0 mt-1 sm:mt-0 px-2.5 py-1 text-xs border border-electric-blue/60 text-electric-blue rounded-md hover:bg-electric-blue/10 transition duration-200 active:scale-95 group whitespace-nowrap"
-                              title="Download Prescription PDF"
-                            >
-                              <FaFileDownload className="mr-1.5 h-3 w-3" /> PDF
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                    <FaAngleRight className="h-5 w-5 text-off-white/40 group-hover:text-pastel-blue group-hover:translate-x-1 transition-all duration-200 flex-shrink-0" />
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -384,21 +304,6 @@ const PatientDetailPageClinicianView: React.FC = () => {
           )}
         </div>
       </div>
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 6px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background-color: rgba(187, 222, 251, 0.3);
-          border-radius: 3px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background-color: rgba(187, 222, 251, 0.5);
-        }
-      `}</style>
     </div>
   );
 };

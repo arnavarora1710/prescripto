@@ -38,9 +38,9 @@ const Hero: React.FC = () => {
             className="text-4xl sm:text-5xl lg:text-6xl font-bold text-electric-blue mb-6 leading-tight cursor-default"
             style={{ textShadow: '0 0 10px rgba(0, 255, 255, 0.4)' }}
           >
-            Personalized Prescriptions,
+            Prescripto: Smarter Prescribing,
             <br />
-            Intelligently Optimized.
+            Powered by AI.
           </motion.h1>
           <motion.p
             initial={{ opacity: 0, y: 40 }}
@@ -48,7 +48,7 @@ const Hero: React.FC = () => {
             transition={{ duration: 0.8, delay: 0.4, ease: [0.2, 0.8, 0.2, 1] }}
             className="text-lg md:text-xl text-off-white/80 mb-10 leading-relaxed"
           >
-            Prescripto AI assists doctors in real-time, generating insurance-aware, allergen-safe, and cost-effective treatment plans explained clearly by LLM intelligence.
+            Real-time, AI-driven prescription support for clinicians. Optimize for cost, allergen safety, and insurance coverage instantly.
           </motion.p>
           <motion.div
             initial={{ opacity: 0, y: 30 }}

@@ -105,7 +105,7 @@ const Navbar: React.FC = () => {
           <div className="flex items-center space-x-3">
             <motion.button
               onClick={handleProfileClick}
-              className="rounded-full overflow-hidden border-2 border-electric-blue/40 hover:border-electric-blue/80 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-card focus:ring-electric-blue transition-all duration-300 hover:shadow-blue-glow-sm"
+              className="rounded-full overflow-hidden border-2 border-electric-blue/40 hover:border-electric-blue/80 transition-all duration-300 hover:shadow-blue-glow-sm"
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.95 }}
               title={`Go to ${profile.role === 'patient' ? 'profile' : 'dashboard'}`}
@@ -137,7 +137,7 @@ const Navbar: React.FC = () => {
         ) : (
           <Link to="/login">
             <motion.button
-              className="group flex items-center space-x-2 bg-transparent text-electric-blue font-semibold py-2 px-5 rounded-lg text-sm border-2 border-electric-blue/70 hover:bg-electric-blue hover:text-dark-bg hover:border-electric-blue hover:shadow-[0_0_18px_rgba(0,255,255,0.6)] transition-all duration-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-card focus:ring-electric-blue"
+              className="group flex items-center space-x-2 bg-transparent text-electric-blue font-semibold py-2 px-5 rounded-lg text-sm border-2 border-electric-blue/70 hover:bg-electric-blue hover:text-dark-bg hover:border-electric-blue hover:shadow-[0_0_18px_rgba(0,255,255,0.6)] transition-all duration-300 cursor-pointer"
               whileHover={{ scale: 1.05, y: -2 }}
               whileTap={{ scale: 0.97 }}
               transition={{ duration: 0.2, ease: "easeOut" }}

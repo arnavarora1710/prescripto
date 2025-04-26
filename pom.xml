@@ -9,15 +9,9 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.hacktech</groupId>
-<<<<<<< HEAD
 	<artifactId>healthai</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>healthai</name>
-=======
-	<artifactId>prescripto</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
-	<name>prescripto</name>
->>>>>>> refs/remotes/origin/main
 	<description>HackTech</description>
 	<url/>
 	<licenses>

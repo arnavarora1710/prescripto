@@ -1,2 +1,6 @@
-/Users/shashank/healthai/src/main/java/com/hacktech/healthai/HealthaiApplication.java
-/Users/shashank/healthai/src/main/java/com/hacktech/healthai/controller/HelloController.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/HealthaiApplication.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/controller/HelloController.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/controller/PatientController.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/PatientDto.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/service/PatientService.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/service/PatientServiceImpl.java

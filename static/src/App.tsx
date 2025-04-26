@@ -8,6 +8,7 @@ import Footer from './components/Footer';
 import LoginPage from './pages/LoginPage';
 import PatientProfilePage from './pages/PatientProfilePage';
 import ClinicianDashboardPage from './pages/ClinicianDashboardPage';
+import PatientDetailPageClinicianView from './pages/PatientDetailPageClinicianView';
 import { AuthProvider } from './context/AuthContext';
 import './App.css'; // Keep App.css for potential global overrides if needed
 
@@ -34,6 +35,10 @@ function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/patient/profile" element={<PatientProfilePage />} />
             <Route path="/clinician/dashboard" element={<ClinicianDashboardPage />} />
+            <Route 
+                path="/clinician/patient/:patientId" 
+                element={<PatientDetailPageClinicianView />} 
+            />
           </Routes>
         </main>
         <Footer />

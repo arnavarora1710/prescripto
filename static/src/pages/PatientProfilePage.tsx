@@ -244,11 +244,10 @@ const PatientProfilePage: React.FC = () => {
           <h2 className="text-xl font-semibold text-electric-blue/90 mb-4">Your Information</h2>
           {/* Profile Picture Display & Upload */}
           <div className="mb-4 flex flex-col items-center">
-             {/* Use patient.profile_picture_url */}
-             {patient.profile_picture_url ? (
+             {/* Use the property name from AuthContext */}
+             {authProfile?.profilePictureUrl ? (
                 <img 
-                    // Use patient.profile_picture_url
-                    src={patient.profile_picture_url} 
+                    src={authProfile.profilePictureUrl} 
                     alt="Profile" 
                     className="h-24 w-24 rounded-full object-cover mb-3 border-2 border-electric-blue/70"
                 />

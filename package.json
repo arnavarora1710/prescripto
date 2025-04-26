@@ -1,7 +1,9 @@
 {
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
+    "@types/uuid": "^10.0.0",
     "date-fns": "^4.1.0",
-    "react-icons": "^5.5.0"
+    "react-icons": "^5.5.0",
+    "uuid": "^11.1.0"
   }
 }

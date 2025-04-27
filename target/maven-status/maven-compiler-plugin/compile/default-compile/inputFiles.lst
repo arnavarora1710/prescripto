@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 /Users/arnav/prescripto/src/main/java/com/hacktech/healthai/HealthaiApplication.java
 /Users/arnav/prescripto/src/main/java/com/hacktech/healthai/config/AppConfig.java
 /Users/arnav/prescripto/src/main/java/com/hacktech/healthai/controller/HelloController.java
@@ -28,3 +29,36 @@
 /Users/arnav/prescripto/src/main/java/com/hacktech/healthai/service/ValidationService.java
 /Users/arnav/prescripto/src/main/java/com/hacktech/healthai/service/ValidationServiceImpl.java
 /Users/arnav/prescripto/src/main/java/com/hacktech/healthai/service/impl/LlmServiceImpl.java
+=======
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/HealthaiApplication.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/config/AppConfig.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/controller/HelloController.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/controller/LlmController.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/controller/OcrController.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/controller/PatientController.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/controller/ValidationController.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/CurrentPrescriptionDto.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/LlmRequestDto.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/LlmResponseDto.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/OcrRequestDto.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/OcrResponseDto.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/PatientDto.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/PrescribedDrugDto.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/PrescriptionRequestDto.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/PrescriptionValidationRequest.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/ProposedPrescriptionDto.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/ValidationIssueDto.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/ValidationResponse.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/entity/Clinician.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/entity/Patient.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/entity/Prescription.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/entity/Visit.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/service/LlmService.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/service/OcrService.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/service/OcrServiceImpl.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/service/PatientService.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/service/PatientServiceImpl.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/service/ValidationService.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/service/ValidationServiceImpl.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/service/impl/LlmServiceImpl.java
+>>>>>>> 28bbb0bc23cc3507c0cb9a695c47d604c3fb5cb5

@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabaseClient';
 // import { User } from '@supabase/supabase-js'; // Remove unused import
 import { Clinician, Visit, Patient, Prescription } from '../types/app'; // Import types - Added Prescription
 import { useAuth } from '../context/AuthContext'; // Import useAuth
-import { FaUserCircle, FaPlus, FaEdit, FaSpinner, FaArrowRight, FaRegCommentDots, FaCalendarAlt, FaAngleRight } from 'react-icons/fa'; // Removed FaFileMedicalAlt, FaNotesMedical
+import { FaUserCircle, FaPlus, FaEdit, FaSpinner, FaArrowRight, FaRegCommentDots, FaCalendarAlt, FaAngleRight } from 'react-icons/fa'; // Removed FaSignOutAlt
 import { formatDistanceToNow } from 'date-fns'; // For relative time
 
 // Helper type for patient details needed on dashboard

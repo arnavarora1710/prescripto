@@ -2,7 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Prescription } from '../types/app';
 import { useAuth } from '../context/AuthContext';
+<<<<<<< HEAD
 import { FaSpinner, FaArrowLeft, FaFilePrescription, FaUserMd, FaCalendarDay, FaAngleRight, FaBell } from 'react-icons/fa';
+=======
+import { FaSpinner, FaArrowLeft, FaFilePrescription, FaUserMd, FaCalendarDay, FaAngleRight } from 'react-icons/fa';
+// import jsPDF from 'jspdf'; // Unused
+// import autoTable from 'jspdf-autotable'; // Unused
+>>>>>>> 28bbb0bc23cc3507c0cb9a695c47d604c3fb5cb5
 import { useNavigate, Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import ReminderModal from '../components/ReminderModal';
@@ -21,6 +27,7 @@ const PatientPrescriptionsPage: React.FC = () => {
 
     // Get the basic profile from context for checks and ID
     const basicPatientProfile = authProfile?.role === 'patient' ? authProfile : null;
+    // const patientUsername = basicPatientProfile?.username || 'Patient'; // Unused
 
     // Overall loading combines auth loading and page data loading
     const loading = authLoading || loadingPageData;
@@ -65,6 +72,7 @@ const PatientPrescriptionsPage: React.FC = () => {
         }
     }, [basicPatientProfile?.profileId, authLoading]);
 
+<<<<<<< HEAD
     // Function to open the modal
     const handleOpenReminderModal = (prescription: Prescription) => {
         setSelectedPrescriptionForModal(prescription);
@@ -76,6 +84,11 @@ const PatientPrescriptionsPage: React.FC = () => {
         setIsModalOpen(false);
         setSelectedPrescriptionForModal(null);
     };
+=======
+    // --- PDF Generation Function (Copied from PatientProfilePage) ---
+    // const generatePrescriptionPdf = (prescription: Prescription) => {
+    // --- End PDF Generation Function ---
+>>>>>>> 28bbb0bc23cc3507c0cb9a695c47d604c3fb5cb5
 
     // Render Logic
     return (

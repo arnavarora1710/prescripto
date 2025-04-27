@@ -1,0 +1,52 @@
+steps:
+  # 1. Install frontend dependencies and build static assets
+  - name: 'gcr.io/cloud-builders/npm'
+    args: ['install', '--legacy-peer-deps']
+    dir: 'static' # Run npm install in the static directory
+    id: 'npm-install'
+
+  - name: 'gcr.io/cloud-builders/npm'
+    args: ['run', 'build']
+    dir: 'static' # Run npm build in the static directory
+    id: 'npm-build'
+    waitFor: ['npm-install'] # Wait for install to finish
+
+  # 2. Build the Docker image
+  # The image will be tagged with the commit SHA and 'latest'
+  # Cloud Build automatically builds for linux/amd64 by default
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+        'build',
+        '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/prescripto-repo/prescripto-app:$SHORT_SHA',
+        '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/prescripto-repo/prescripto-app:latest',
+        '.' # Build context is the root directory
+      ]
+    id: 'docker-build'
+    waitFor: ['npm-build'] # Wait for frontend build to finish
+
+  # 3. Push the Docker image (both tags) to Artifact Registry
+  # This is implicitly handled by listing the tags in the 'images' section below
+
+  # 4. Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args: [
+        'run', 'deploy', 'prescripto-service',
+        '--image=us-central1-docker.pkg.dev/$PROJECT_ID/prescripto-repo/prescripto-app:$SHORT_SHA',
+        '--region=us-central1',
+        '--project=$PROJECT_ID',
+        '--quiet' # Suppress interactive prompts
+      ]
+    id: 'cloudrun-deploy'
+    waitFor: ['docker-build'] # Wait for docker build to finish
+
+# Specify the images to push to Artifact Registry after successful build
+images:
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/prescripto-repo/prescripto-app:$SHORT_SHA'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/prescripto-repo/prescripto-app:latest'
+
+# Optional: Increase timeout if builds take longer
+options:
+  machineType: 'N1_HIGHCPU_8' # Use a faster machine type if needed
+  # default timeout is 10 minutes
+  # timeout: '1200s' # Example: 20 minutes 

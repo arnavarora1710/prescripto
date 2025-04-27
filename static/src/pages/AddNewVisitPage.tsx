@@ -56,6 +56,7 @@ interface Recommendation {
     status: 'pending' | 'approved' | 'rejected';
     clinicianComment: string;
     validationIssue?: string; // To display backend warnings
+    copayInfo?: string; // e.g., "$10.00", "Not Covered", "N/A"
 }
 // --- End Recommendation State Structure ---
 
@@ -300,7 +301,8 @@ const AddNewVisitPage: React.FC = () => {
                     llmNotes: stripAsterisks(notesMatch?.[1]) || 'N/A',
                     status: 'pending',
                     clinicianComment: '',
-                    validationIssue: undefined
+                    validationIssue: undefined,
+                    copayInfo: undefined // Initialize copayInfo
                 });
             }
         }
@@ -308,6 +310,46 @@ const AddNewVisitPage: React.FC = () => {
         console.log("Parsed Recommendations (Asterisks Removed):", recommendations);
         return recommendations;
     };
+
+    // --- Function to Extract Copay Info using LLM ---
+    const extractCopayFromNotes = async (notes: string): Promise<string> => {
+        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+        if (!apiKey || !notes) {
+            console.warn("Gemini API Key or notes missing, cannot extract copay.");
+            return "N/A";
+        }
+
+        try {
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+
+            const prompt = `Analyze the following prescription notes and extract only the patient's copay amount or coverage status.
+            Notes: "${notes}"
+
+            Desired Output Rules:
+            1. If a specific dollar amount is mentioned (e.g., "Copay $10", "Expected cost: $25.50"), return only the number (e.g., "10", "25.50").
+            2. If the notes indicate it's not covered or not listed (e.g., "Not listed in formulary", "Not covered"), return "Not Covered".
+            3. If no clear copay or coverage information is found, return "N/A".
+
+            Return ONLY the extracted value ("10", "25.50", "Not Covered", or "N/A"). Do not include currency symbols or any other text.`;
+
+            const result = await model.generateContent(prompt);
+            const response = result.response;
+            const text = response.text().trim();
+
+            // Basic validation
+            if (!isNaN(parseFloat(text)) || text === "Not Covered" || text === "N/A") {
+                return text;
+            } else {
+                console.warn(`Unexpected LLM output for copay extraction from notes "${notes}":`, text);
+                return "N/A"; // Default to N/A on unexpected output
+            }
+        } catch (error) {
+            console.error(`Error calling Gemini for copay extraction from notes "${notes}":`, error);
+            return "Error"; // Indicate an error occurred
+        }
+    };
+    // --- End Copay Extraction Function ---
 
     const handleCreateVisit = async (e?: React.FormEvent) => { // Made event optional
         if (e) e.preventDefault(); // Prevent default if called from form submit
@@ -635,18 +677,40 @@ ${RECOMMENDATION_DELIMITER}
         setFinalizeError(null);
         setSuccessMessage(null);
 
-        const prescriptionsToInsert = finalPrescriptions.map(fp => ({
-            patient_id: selectedPatient.id,
-            clinician_id: clinicianId,
-            visit_id: visitId,
-            medication: fp.medicationName,
-            dosage: fp.dosage,
-            frequency: fp.frequency,
-            notes: fp.clinicianComment || null, // Save clinician comment as notes
-        }));
+        // --- Extract Copay Info BEFORE Inserting --- 
+        const copayExtractionPromises = finalPrescriptions.map(async (fp) => {
+            // Extract copay from the original LLM notes
+            const copay = await extractCopayFromNotes(fp.llmNotes);
+            return { ...fp, copayInfo: copay }; // Return the prescription with copayInfo added
+        });
+
+        const prescriptionsWithCopay = await Promise.all(copayExtractionPromises);
+        // --- End Copay Extraction --- 
+
+        // Map prescriptions for insertion, now including the extracted copay info in the notes
+        const prescriptionsToInsert = prescriptionsWithCopay.map(fp => {
+            // Combine original notes, clinician comment, and copay info
+            let combinedNotes = fp.llmNotes;
+            if (fp.clinicianComment) {
+                combinedNotes += `\n\nClinician Comment: ${fp.clinicianComment}`;
+            }
+            if (fp.copayInfo) {
+                combinedNotes += `\n\n|| COPAY_INFO: ${fp.copayInfo} ||`; // Embed copay info
+            }
+
+            return {
+                patient_id: selectedPatient.id,
+                clinician_id: clinicianId,
+                visit_id: visitId!,
+                medication: fp.medicationName,
+                dosage: fp.dosage,
+                frequency: fp.frequency,
+                notes: combinedNotes.trim(), // Use the combined notes string
+            };
+        });
 
         try {
-            console.log("Inserting final prescriptions:", prescriptionsToInsert);
+            console.log("Inserting final prescriptions (with embedded copay info):", prescriptionsToInsert);
             const { error: insertError } = await supabase
                 .from('prescriptions')
                 .insert(prescriptionsToInsert);
@@ -778,7 +842,12 @@ ${RECOMMENDATION_DELIMITER}
 
             if (newParsedRecs.length > 0) {
                 // **Merge** new recommendations with existing approved/pending ones
-                setRecommendations([...existingApprovedPending, ...newParsedRecs]);
+                // Reset copayInfo for newly generated ones
+                const finalRecs = [
+                    ...existingApprovedPending,
+                    ...newParsedRecs.map(rec => ({ ...rec, copayInfo: undefined }))
+                ];
+                setRecommendations(finalRecs);
                 setSuccessMessage("New recommendations generated to replace rejected ones.");
                 setCanRegenerate(false); // Hide regenerate button until another rejection
             } else {
@@ -798,7 +867,7 @@ ${RECOMMENDATION_DELIMITER}
         } finally {
             setLoadingRegenerate(false);
         }
-    }, [visitReason, visitNotes, selectedPatient, recommendations, patientAllergiesList, currentPrescriptionsList, fullPatientDataForVisit, parseLlmRecommendations]); // Added parseLlmRecommendations dependency
+    }, [visitReason, visitNotes, selectedPatient, recommendations, patientAllergiesList, currentPrescriptionsList, fullPatientDataForVisit, parseLlmRecommendations, extractCopayFromNotes]); // Added extractCopayFromNotes dependency
 
     // Subscribe to Supabase channel for drawing updates
     const listenForDrawingUpdates = useCallback((channelId: string) => {

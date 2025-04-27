@@ -28,9 +28,10 @@ const Hero: React.FC = () => {
     >
       <AnimatedBackground />
 
-      {/* Content Layer */}
-      <div className="container mx-auto px-6 relative z-10">
-        <div className="max-w-xl md:max-w-2xl text-center md:text-left">
+      {/* Content Layer - Updated to use Flexbox for side-by-side layout */}
+      <div className="container mx-auto px-6 relative z-10 flex flex-col md:flex-row items-center gap-10 lg:gap-16">
+        {/* Text Content */}
+        <div className="md:w-1/2 lg:w-3/5 text-center md:text-left">
           <motion.h1
             initial={{ opacity: 0, y: 50, filter: 'blur(5px)' }}
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
@@ -75,6 +76,25 @@ const Hero: React.FC = () => {
             </motion.button>
           </motion.div>
         </div>
+
+        {/* Video Content */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.9, delay: 0.5, ease: [0.2, 0.8, 0.2, 1] }}
+          className="md:w-1/2 lg:w-2/5 mt-10 md:mt-0"
+        >
+          <video
+            src="/trailer.mp4#t=14" // Assuming served from the public root, start at 16s
+            autoPlay
+            muted
+            loop
+            className="rounded-lg shadow-xl shadow-electric-blue/20 w-full h-auto"
+            playsInline // Important for mobile
+          >
+            Your browser does not support the video tag.
+          </video>
+        </motion.div>
       </div>
     </motion.section>
   );

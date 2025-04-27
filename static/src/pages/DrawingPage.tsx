@@ -41,22 +41,56 @@ const DrawingPage: React.FC = () => {
         setSuccess(null);
 
         try {
-            // Get image data as base64 PNG
-            // Note: getDataURL() returns the full data URL string (e.g., "data:image/png;base64,...")
-            // Add type assertion to bypass inaccurate type definition
-            const base64ImageData = (canvasRef.current as any)?.getDataURL('image/png');
+            // --- Get image with explicit white background --- 
+            let base64ImageData = null;
+            if (canvasRef.current) {
+                // Access the underlying canvas elements
+                const foregroundCanvas = (canvasRef.current as any)?.canvasContainer?.children[1] as HTMLCanvasElement;
+                // const backgroundCanvas = (canvasRef.current as any)?.canvasContainer?.children[0] as HTMLCanvasElement; // Optional ref if needed
+
+                if (foregroundCanvas) {
+                    const width = foregroundCanvas.width;
+                    const height = foregroundCanvas.height;
+
+                    // Create a temporary canvas
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = width;
+                    tempCanvas.height = height;
+                    const ctx = tempCanvas.getContext('2d');
+
+                    if (ctx) {
+                        // Fill with white background
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(0, 0, width, height);
+
+                        // Draw the existing canvas content onto the temp canvas
+                        // The foregroundCanvas contains the actual drawing
+                        ctx.drawImage(foregroundCanvas, 0, 0);
+
+                        // Export from the temporary canvas
+                        base64ImageData = tempCanvas.toDataURL('image/png');
+                        console.log("Exported drawing with forced white background.");
+                    } else {
+                        console.error("Could not get 2D context from temporary canvas.");
+                    }
+                } else {
+                    console.error("Could not find the foreground canvas element within react-canvas-draw.");
+                }
+            }
+            // --- End image export modification --- 
 
             if (!base64ImageData) {
                 throw new Error("Failed to get image data from canvas.");
             }
 
+            // Add log before insert
             console.log(`Sending drawing for channel ID: ${channelId}`);
             // Insert into Supabase table `drawing_updates`
             const { error: insertError } = await supabase
                 .from('drawing_updates')
                 .insert({
                     channel_id: channelId,
-                    base64Image: base64ImageData // Store the full data URL
+                    base64image: base64ImageData // Match schema: lowercase 'i'
                 });
 
             if (insertError) {

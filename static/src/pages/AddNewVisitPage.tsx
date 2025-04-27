@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { Patient } from '../types/app'; // Patient type should include medical/insurance details
 import { useAuth } from '../context/AuthContext'; // Need clinician ID
-import { FaSearch, FaTimes, FaUserCircle, FaSpinner, FaArrowLeft, FaUserPlus, FaCheckCircle, FaExclamationTriangle, FaUpload, FaImage, FaQrcode, FaTabletAlt } from 'react-icons/fa'; // Removed FaNotesMedical
+import { FaSearch, FaTimes, FaUserCircle, FaSpinner, FaArrowLeft, FaUserPlus, FaCheckCircle, FaExclamationTriangle, FaQrcode, FaTabletAlt } from 'react-icons/fa'; // Removed FaNotesMedical
 import { v4 as uuidv4 } from 'uuid'; // Import uuid
 // Import the new QR code library
 import QRCode from "react-qr-code";
@@ -61,12 +61,12 @@ interface Recommendation {
 
 // Define the structure for the drawing update payload
 interface DrawingUpdatePayload {
-    base64Image: string;
+    base64image: string; // Match DB schema: lowercase 'i'
 }
 
 const AddNewVisitPage: React.FC = () => {
     const navigate = useNavigate();
-    const { profile: authProfile, loading: authLoading, error: authError } = useAuth();
+    const { profile: authProfile, loading: authLoading } = useAuth();
     const clinicianId = authProfile?.role === 'clinician' ? authProfile.profileId : null;
 
     const [searchTerm, setSearchTerm] = useState('');
@@ -101,14 +101,11 @@ const AddNewVisitPage: React.FC = () => {
     const [loadingRegenerate, setLoadingRegenerate] = useState(false);
     // --- End New State ---
 
-    // --- State for Uploaded Drawing ---
-    const [drawingImageFile, setDrawingImageFile] = useState<File | null>(null);
+    // --- Drawing State (Remove file-related state) ---
     const [drawingImagePreviewUrl, setDrawingImagePreviewUrl] = useState<string | null>(null);
-    const [drawingBase64, setDrawingBase64] = useState<string | null>(null);
+    const [drawingBase64, setDrawingBase64] = useState<string | null>(null); // Keep this for QR/LLM
     const [processingDrawing, setProcessingDrawing] = useState(false);
     const [drawingError, setDrawingError] = useState<string | null>(null);
-    const [drawingUploadUrl, setDrawingUploadUrl] = useState<string | null>(null); // URL after upload to storage
-    const fileInputRef = useRef<HTMLInputElement>(null); // Ref for the file input
     // --- End Drawing State ---
 
     // Add back QR code related state
@@ -117,7 +114,6 @@ const AddNewVisitPage: React.FC = () => {
     const [isListeningForDrawing, setIsListeningForDrawing] = useState(false);
 
     // --- Refs ---
-    const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const drawingChannelRef = useRef<any>(null); // Store Supabase channel instance
 
     // Debounced search effect
@@ -153,7 +149,7 @@ const AddNewVisitPage: React.FC = () => {
             } finally {
                 setLoadingSearch(false);
             }
-        }, 100); // Set debounce to 100ms
+        }, 300); // Increased debounce slightly
 
         // Cleanup function
         return () => clearTimeout(timerId);
@@ -183,12 +179,9 @@ const AddNewVisitPage: React.FC = () => {
         setCurrentPrescriptionsList([]);
         setPatientAllergiesList([]);
         // Reset drawing state
-        setDrawingImageFile(null);
         setDrawingImagePreviewUrl(null);
         setProcessingDrawing(false);
         setDrawingError(null);
-        setDrawingUploadUrl(null);
-        if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
         // Fetch context
         fetchPatientContextData(patient.id);
     };
@@ -204,57 +197,6 @@ const AddNewVisitPage: React.FC = () => {
         // Optionally focus search input again
         searchInputRef.current?.focus();
     };
-
-    // --- Drawing Upload Handler ---
-    const handleDrawingUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (file && file.type.startsWith('image/')) {
-            setDrawingError(null);
-            setDrawingImageFile(file);
-
-            // Create & set preview URL
-            const previewUrl = URL.createObjectURL(file);
-            // Revoke previous URL if exists
-            if (drawingImagePreviewUrl) {
-                URL.revokeObjectURL(drawingImagePreviewUrl);
-            }
-            setDrawingImagePreviewUrl(previewUrl);
-
-            // Read file as base64 for LLM processing
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const base64String = reader.result as string;
-                // Remove the prefix (e.g., "data:image/png;base64,")
-                const base64Data = base64String.split(',', 2)[1];
-                if (base64Data) {
-                    setProcessingDrawing(true);
-                    processDrawingWithLLM(base64Data);
-                } else {
-                    setDrawingError("Failed to read image data for processing.");
-                    setDrawingImageFile(null); // Clear file if reading fails
-                    setDrawingImagePreviewUrl(null);
-                    URL.revokeObjectURL(previewUrl); // Clean up preview URL
-                }
-            };
-            reader.onerror = () => {
-                console.error("FileReader error");
-                setDrawingError("Failed to read the selected image file.");
-                setDrawingImageFile(null);
-                setDrawingImagePreviewUrl(null);
-                URL.revokeObjectURL(previewUrl); // Clean up preview URL
-            };
-            reader.readAsDataURL(file);
-        } else {
-            setDrawingError("Please select a valid image file (PNG, JPG, etc.).");
-            setDrawingImageFile(null);
-            setDrawingImagePreviewUrl(null);
-            if (drawingImagePreviewUrl) {
-                URL.revokeObjectURL(drawingImagePreviewUrl); // Clean up previous preview if invalid file selected
-            }
-            if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
-        }
-    };
-    // --- End Drawing Upload Handler ---
 
     // --- LLM Processing Function (Now takes base64 string) ---
     const processDrawingWithLLM = async (base64ImageData: string) => {
@@ -272,11 +214,33 @@ const AddNewVisitPage: React.FC = () => {
             const genAI = new GoogleGenerativeAI(apiKey);
             const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // Or gemini-pro-vision
 
+            // --- Extract Mime Type and Raw Base64 Data --- 
+            let rawBase64Data = '';
+            let mimeType = 'image/png'; // Default
+            const dataUrlMatch = base64ImageData.match(/^data:(image\/\w+);base64,/);
+            if (dataUrlMatch && dataUrlMatch[1]) {
+                mimeType = dataUrlMatch[1];
+                rawBase64Data = base64ImageData.substring(dataUrlMatch[0].length);
+                console.log(`Extracted Mime Type: ${mimeType}`);
+            } else {
+                // Fallback if it doesn't have the prefix (shouldn't happen with canvas dataURL)
+                console.warn("Base64 data did not have expected data URL prefix. Assuming PNG.");
+                rawBase64Data = base64ImageData;
+            }
+
+            // Add logging for the raw data
+            console.log(`Sending Base64 data (length: ${rawBase64Data.length}), starts with: ${rawBase64Data.substring(0, 50)}...`);
+
+            if (!rawBase64Data) {
+                throw new Error("Processed base64 data is empty.");
+            }
+            // --- End Extraction and Logging --- 
+
             const prompt = "Transcribe the handwriting and drawings in this image into concise clinical visit notes. Focus on medical terms, symptoms, and potential diagnoses or plans. Format the output clearly.";
             const imagePart = {
                 inlineData: {
-                    mimeType: "image/png", // Assuming PNG, adjust if other types allowed
-                    data: base64ImageData,
+                    mimeType: mimeType, // Use extracted mime type
+                    data: rawBase64Data, // Use the raw base64 data without prefix
                 },
             };
 
@@ -337,10 +301,10 @@ const AddNewVisitPage: React.FC = () => {
         return recommendations;
     };
 
-    const handleCreateVisit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!selectedPatient || !clinicianId || !visitReason.trim()) {
-            setSubmitError("Please select a patient and enter visit reason.");
+    const handleCreateVisit = async (e?: React.FormEvent) => { // Made event optional
+        if (e) e.preventDefault(); // Prevent default if called from form submit
+        if (!selectedPatient || !clinicianId || (!visitReason.trim() && !visitNotes.trim() && !drawingBase64)) {
+            setSubmitError("Please select a patient and enter visit reason or provide notes/drawing.");
             return;
         }
 
@@ -356,10 +320,9 @@ const AddNewVisitPage: React.FC = () => {
         setCanFinalize(false);
         setFinalizeError(null);
         let createdVisitId: string | null = null;
-        let uploadedDrawingPath: string | null = null;
 
         try {
-            // --- 1. Create Visit Record (without drawing URL initially) ---
+            // --- 1. Create Visit Record --- 
             console.log(`Creating visit for patient ${selectedPatient.id} by clinician ${clinicianId}`);
             const { data: newVisit, error: insertError } = await supabase
                 .from('visits')
@@ -369,7 +332,7 @@ const AddNewVisitPage: React.FC = () => {
                     visit_date: new Date().toISOString(),
                     reason: visitReason.trim(),
                     notes: visitNotes.trim() || null,
-                    // drawing_image_url: null // Set later after upload
+                    drawing_image_url: drawingImagePreviewUrl || null // Store the received data URL
                 })
                 .select('id')
                 .single();
@@ -378,62 +341,20 @@ const AddNewVisitPage: React.FC = () => {
             createdVisitId = newVisit.id;
             setVisitId(createdVisitId); // Update state
             console.log("Visit created successfully, ID:", createdVisitId);
-            setSuccessMessage(`Visit created. Processing notes/recommendations...`);
+            setSuccessMessage(`Visit created. Processing recommendations...`);
 
-            // --- 2. Upload Drawing Image (if exists) ---
-            if (drawingImageFile) {
-                console.log("Uploading drawing image...");
-                const fileExt = drawingImageFile.name.split('.').pop();
-                const fileName = `${createdVisitId}-${Date.now()}.${fileExt}`;
-                const filePath = `visit-drawings/${fileName}`;
-
-                const { data: uploadData, error: uploadError } = await supabase.storage
-                    .from('visit-drawings') // Ensure this bucket exists and has appropriate policies
-                    .upload(filePath, drawingImageFile, {
-                        cacheControl: '3600',
-                        upsert: false,
-                    });
-
-                if (uploadError) {
-                    throw new Error(`Drawing Upload Error: ${uploadError.message}`);
-                }
-                uploadedDrawingPath = uploadData.path;
-                console.log("Drawing uploaded successfully:", uploadedDrawingPath);
-
-                // --- 3. Update Visit Record with Drawing URL ---
-                // Construct the public URL (adjust bucket name if needed)
-                const { data: urlData } = supabase.storage.from('visit-drawings').getPublicUrl(uploadedDrawingPath);
-                const publicUrl = urlData?.publicUrl;
-                console.log("Public URL for drawing:", publicUrl);
-
-                if (publicUrl) {
-                    const { error: updateError } = await supabase
-                        .from('visits')
-                        .update({ drawing_image_url: publicUrl }) // Use the public URL
-                        .eq('id', createdVisitId);
-
-                    if (updateError) {
-                        // Log error but maybe don't fail the whole process?
-                        console.error("Failed to update visit with drawing URL:", updateError.message);
-                        setSubmitError("Visit saved, but failed to link drawing image.");
-                    } else {
-                        setDrawingUploadUrl(publicUrl); // Store for potential display/use
-                    }
-                } else {
-                    console.error("Could not get public URL for drawing.");
-                    setSubmitError("Visit saved, but failed to get public URL for drawing.");
-                }
-            }
-
-            // --- 4. Fetch Full Patient Data (if needed for recommendations) ---
+            // --- Now Step 2: Fetch Full Patient Data --- 
             let patientData = fullPatientDataForVisit;
             if (!patientData) {
                 await fetchPatientContextData(selectedPatient.id);
-                patientData = fullPatientDataForVisit;
+                // Re-check after fetch attempt
+                const updatedContext = await supabase.from('patients').select('*').eq('id', selectedPatient.id).single();
+                patientData = updatedContext.data as FullPatientData | null;
                 if (!patientData) throw new Error("Failed to load patient data before LLM recommendation call.");
+                setFullPatientDataForVisit(patientData); // Update state if fetched here
             }
 
-            // --- 5. Call Gemini API for PRESCRIPTION Recommendations (if visitNotes exist) ---
+            // --- Now Step 3: Call Gemini API for PRESCRIPTION Recommendations --- 
             if (visitNotes.trim()) { // Only generate Rx if notes exist (from typing or drawing transcription)
                 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
                 if (!apiKey) throw new Error("Gemini API Key not configured for recommendations.");
@@ -807,6 +728,8 @@ Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
 
     // Subscribe to Supabase channel for drawing updates
     const listenForDrawingUpdates = useCallback((channelId: string) => {
+        // Add log here
+        console.log(`Setting up Supabase channel listener for: ${channelId}`);
         console.log(`Listening on channel: drawing-updates-${channelId}`);
         setIsListeningForDrawing(true);
 
@@ -816,10 +739,13 @@ Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
                 'postgres_changes',
                 { event: 'INSERT', schema: 'public', table: 'drawing_updates', filter: `channel_id=eq.${channelId}` },
                 (payload) => {
-                    console.log('Received drawing update via Supabase channel:', payload);
-                    if (payload.new && payload.new.base64Image) {
-                        setDrawingBase64(payload.new.base64Image);
-                        setDrawingImagePreviewUrl(payload.new.base64Image); // Show preview
+                    // Log the raw payload immediately upon receiving
+                    console.log('Raw payload received from Supabase channel:', JSON.stringify(payload, null, 2));
+                    // Fix: Use lowercase 'base64image' to match DB schema
+                    if (payload.new && payload.new.base64image) {
+                        console.log('Processing payload.new.base64image...'); // Add log here too
+                        setDrawingBase64(payload.new.base64image);
+                        setDrawingImagePreviewUrl(payload.new.base64image); // Show preview
                         setShowQrCode(false); // Hide QR code
                         setIsListeningForDrawing(false); // Stop listening indicator
                         if (drawingChannelRef.current) {
@@ -828,7 +754,7 @@ Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
                         }
                         setDrawingError(null); // Clear previous errors
                         // Automatically process the drawing
-                        processDrawingWithLLM(payload.new.base64Image);
+                        processDrawingWithLLM(payload.new.base64image);
                     } else {
                         console.warn("Received payload without new image data:", payload);
                         setDrawingError("Received update from tablet, but image data was missing.");
@@ -1016,7 +942,7 @@ Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
                                     placeholder="Enter observations, diagnosis, treatment plan for LLM..."
                                     disabled={loadingSubmit || loadingPrescription || recommendations.length > 0}
                                 />
-                                {/* Add Draw Notes Button */}
+                                {/* Draw Notes Button */}
                                 <button
                                     type="button"
                                     onClick={handleDrawNotesClick}
@@ -1028,41 +954,31 @@ Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
                                 </button>
                             </div>
 
-                            {/* Drawing Upload Section */}
-                            <div className="border-t border-border-color/50 pt-4">
-                                <label htmlFor="drawingUpload" className="block text-sm font-medium text-off-white/80 mb-2 flex items-center">
-                                    <FaImage className="mr-2 text-pastel-mint" /> Optional: Upload Drawn Notes Image
-                                </label>
-                                <input
-                                    type="file"
-                                    id="drawingUpload"
-                                    ref={fileInputRef}
-                                    accept="image/*"
-                                    onChange={handleDrawingUpload}
-                                    className="block w-full text-sm text-off-white/70 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-electric-blue/20 file:text-electric-blue hover:file:bg-electric-blue/30 file:cursor-pointer disabled:opacity-50"
-                                    disabled={processingDrawing || loadingSubmit || loadingPrescription || recommendations.length > 0}
-                                />
-                                {drawingImagePreviewUrl && !showQrCode && (
-                                    <div className="mt-4 p-2 border border-border-color rounded-lg inline-block bg-dark-input/50">
+                            {/* --- MOVED Preview Area (for QR received drawing) --- */}
+                            {drawingImagePreviewUrl && !showQrCode && (
+                                <div className="flex justify-center my-4"> {/* Added my-4 for spacing */}
+                                    <div className="p-4 border border-border-color rounded-lg inline-block bg-dark-input/50 animate-fade-in">
+                                        <p className="text-sm text-pastel-mint mb-2">Received drawing:</p>
                                         <img src={drawingImagePreviewUrl} alt="Drawing Preview" className="max-h-48 rounded" />
                                     </div>
-                                )}
-                                {processingDrawing && !showQrCode && (
-                                    <div className="flex items-center justify-center text-sm text-pastel-blue py-6 animate-pulse mt-2">
-                                        <FaSpinner className="animate-spin h-5 w-5 mr-3" />
-                                        <span>Processing uploaded drawing for transcription...</span>
-                                    </div>
-                                )}
-                                {drawingError && (
-                                    <p className="text-red-400 text-xs pt-1 mt-1">{drawingError}</p>
-                                )}
-                            </div>
+                                </div>
+                            )}
+                            {/* --- End Moved Preview Area --- */}
+
+                            {/* Show processing indicator only if actively processing *after* receiving */}
+                            {processingDrawing && !showQrCode && drawingBase64 && (
+                                <div className="flex items-center justify-center text-sm text-pastel-blue py-4 animate-pulse">
+                                    <FaSpinner className="animate-spin h-5 w-5 mr-3" />
+                                    <span>Processing received drawing for transcription...</span>
+                                </div>
+                            )}
 
                             {/* Error/Success Messages */}
                             <div className="min-h-[40px] space-y-2">
                                 {submitError && <p className="text-red-400 text-sm flex items-center"><FaExclamationTriangle className="mr-2" /> {submitError}</p>}
                                 {errorPrescription && <p className="text-red-400 text-sm flex items-center"><FaExclamationTriangle className="mr-2" /> {errorPrescription}</p>}
-                                {successMessage && <p className="text-green-400 text-sm flex items-center"><FaCheckCircle className="mr-2" /> {successMessage}</p>}
+                                {/* Show success only if not loading prescription */}
+                                {successMessage && !loadingPrescription && <p className="text-green-400 text-sm flex items-center"><FaCheckCircle className="mr-2" /> {successMessage}</p>}
                             </div>
 
                             {/* Show specific loading message for prescription generation */}
@@ -1073,14 +989,14 @@ Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
                                 </div>
                             )}
 
-                            {/* Submit Button */}
+                            {/* Generate Suggestions Button (Submit) */}
                             <div>
                                 <button
-                                    type="submit"
+                                    type="submit" // Triggers form onSubmit -> handleCreateVisit
                                     disabled={loadingSubmit || loadingPrescription || recommendations.length > 0 || (!visitReason.trim() && !visitNotes.trim() && !drawingBase64)}
                                     className="w-full group flex justify-center items-center py-3 px-4 border border-electric-blue rounded-md shadow-sm text-sm font-medium text-electric-blue bg-transparent hover:bg-electric-blue hover:text-dark-bg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-card focus:ring-electric-blue disabled:opacity-50 disabled:cursor-not-allowed transition duration-200 ease-in-out"
                                 >
-                                    {loadingSubmit ? (
+                                    {loadingSubmit || loadingPrescription ? (
                                         <FaSpinner className="animate-spin h-5 w-5 text-electric-blue" />
                                     ) : (
                                         <span className="group-hover:scale-105 transition-transform duration-200 ease-in-out">Generate Prescription Suggestions</span>
@@ -1110,7 +1026,7 @@ Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
                             <div className="flex justify-center mb-5 p-4 bg-white rounded-lg inline-block shadow-lg">
                                 {drawingChannelId && (
                                     <QRCode
-                                        value={`https://37e2-131-215-220-33.ngrok-free.app/draw/${drawingChannelId}`} // <-- Use ngrok URL
+                                        value={`https://8dd4-131-215-220-33.ngrok-free.app/draw/${drawingChannelId}`} // <-- Ensure this points to the FRONTEND (Vite/5173) ngrok URL
                                         size={180}
                                         level="M" // Error correction level
                                     />
@@ -1131,29 +1047,6 @@ Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
                             >
                                 Cancel Drawing Sync
                             </button>
-                        </div>
-                    )}
-                    {/* Show Preview after QR scan */}
-                    {drawingImagePreviewUrl && !showQrCode && (
-                        <div className="mt-6 p-4 border border-border-color rounded-lg inline-block bg-dark-input/50 animate-fade-in">
-                            <p className="text-sm text-pastel-mint mb-2">Received drawing:</p>
-                            <img src={drawingImagePreviewUrl} alt="Drawing Preview" className="max-h-48 rounded" />
-                            {/* Still allow submitting if image received via QR */}
-                            {!loadingPrescription && !recommendations.length && (
-                                <div className="mt-4 pt-4 border-t border-border-color/50">
-                                    <button
-                                        onClick={handleCreateVisit} // Reuse the same handler, it uses drawingBase64
-                                        disabled={loadingSubmit || loadingPrescription || recommendations.length > 0}
-                                        className="w-full group flex justify-center items-center py-3 px-4 border border-electric-blue rounded-md shadow-sm text-sm font-medium text-electric-blue bg-transparent hover:bg-electric-blue hover:text-dark-bg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-card focus:ring-electric-blue disabled:opacity-50 disabled:cursor-not-allowed transition duration-200 ease-in-out"
-                                    >
-                                        {loadingSubmit ? (
-                                            <FaSpinner className="animate-spin h-5 w-5 text-electric-blue" />
-                                        ) : (
-                                            <span className="group-hover:scale-105 transition-transform duration-200 ease-in-out">Generate Prescription Suggestions</span>
-                                        )}
-                                    </button>
-                                </div>
-                            )}
                         </div>
                     )}
                     {/* --- End QR Code Display Section --- */}

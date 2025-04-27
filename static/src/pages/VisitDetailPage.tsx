@@ -5,10 +5,10 @@ import { Visit, Prescription, Patient, Clinician } from '../types/app'; // Impor
 import { useAuth } from '../context/AuthContext'; // To check user role if needed
 
 // Combined Icons from both branches
-import { 
-    FaSpinner, FaArrowLeft, FaCalendarAlt, FaUserMd, FaNotesMedical, 
-    FaRegCommentDots, FaFilePrescription, FaPills, FaStickyNote, 
-    FaUserCircle, FaFileDownload, FaBell, FaRobot 
+import {
+    FaSpinner, FaArrowLeft, FaCalendarAlt, FaUserMd, FaNotesMedical,
+    FaRegCommentDots, FaFilePrescription, FaPills, FaStickyNote,
+    FaUserCircle, FaFileDownload, FaBell, FaRobot
 } from 'react-icons/fa';
 
 import { format } from 'date-fns';
@@ -168,7 +168,7 @@ const VisitDetailPage: React.FC = () => {
                 headStyles: { fillColor: [60, 70, 90] }, // Dark blue-gray header
                 styles: { fontSize: 9, cellPadding: 2 },
                 columnStyles: {
-                     3: { cellWidth: 'auto'} // Allow Notes column to wrap
+                    3: { cellWidth: 'auto' } // Allow Notes column to wrap
                 },
                 margin: { left: 15, right: 15 },
                 didDrawPage: (data) => {
@@ -177,10 +177,10 @@ const VisitDetailPage: React.FC = () => {
             });
             currentY += 5; // Space after table
         } else {
-             doc.setFontSize(10);
-             doc.setFont('helvetica', 'italic');
-             doc.text("No prescriptions were issued during this visit.", 15, currentY);
-             currentY += 10;
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'italic');
+            doc.text("No prescriptions were issued during this visit.", 15, currentY);
+            currentY += 10;
         }
 
         // --- Footer ---
@@ -238,19 +238,29 @@ const VisitDetailPage: React.FC = () => {
                     <FaArrowLeft className="mr-2 h-4 w-4 group-hover:-translate-x-1 transition-transform duration-200" /> Back
                 </button>
                 <h1 className="text-3xl sm:text-4xl font-bold text-white text-center flex-grow">Visit Details</h1>
-                <div className="w-20"></div> {/* Spacer */}
+                <div className="w-24 flex justify-end"> {/* Adjusted spacer width */}
+                    {isPatientView && visitId && (
+                        <button
+                            onClick={() => navigate(`/visit/${visitId}/chat`)}
+                            className="flex items-center px-4 py-2 border border-electric-blue text-electric-blue rounded-md hover:bg-electric-blue/10 transition duration-200 text-sm font-medium group active:scale-95"
+                            title="Chat with AI about this visit"
+                        >
+                            <FaRobot className="mr-2 h-4 w-4 group-hover:animate-pulse" /> Chat
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Add Download PDF Button */}
-             <div className="mb-6 text-right">
-                 <button
+            <div className="mb-6 text-right">
+                <button
                     onClick={generateVisitPdf}
                     className="inline-flex items-center px-4 py-2 border border-pastel-blue text-pastel-blue rounded-md shadow-sm text-sm font-medium bg-transparent hover:bg-pastel-blue hover:text-dark-card focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-bg focus:ring-pastel-blue transition duration-150 active:scale-95 group"
-                 >
+                >
                     <FaFileDownload className="mr-2 h-4 w-4" />
                     Download PDF Summary
-                 </button>
-             </div>
+                </button>
+            </div>
 
             {/* Main Content Card */}
             <div className="bg-dark-card p-6 sm:p-8 rounded-xl shadow-lg border border-border-color animate-fade-in">
@@ -288,7 +298,8 @@ const VisitDetailPage: React.FC = () => {
                     )}
                 </div>
 
-                {/* === Chatbot Link Section === */}
+                {/* === REMOVE Chatbot Link Section === */}
+                {/* 
                 <div className="mt-6 mb-6 pt-6 border-t border-border-color/40">
                     <button
                         onClick={() => navigate(`/visit/${visitId}/chat`)} // Link to visit-specific chat
@@ -298,6 +309,7 @@ const VisitDetailPage: React.FC = () => {
                     </button>
                     <p className="text-xs text-center mt-2 text-off-white/50">Get explanations about notes or prescriptions from this visit.</p>
                 </div>
+                */}
 
                 {/* Prescriptions Section (if any) */}
                 {visit.prescriptions && visit.prescriptions.length > 0 && (
@@ -315,14 +327,16 @@ const VisitDetailPage: React.FC = () => {
                                             <FaPills className="mr-2 h-4 w-4 text-pastel-blue/70" />
                                             {rx.medication}
                                         </p>
-                                        {/* === Updated Reminder Button === */}
-                                        <button
-                                            onClick={() => handleOpenReminderModal(rx)} // Open modal with current rx
-                                            className="p-1.5 text-off-white/50 hover:text-pastel-peach hover:bg-pastel-peach/10 rounded-full transition-colors duration-150"
-                                            title="Set reminder for this medication"
-                                        >
-                                            <FaBell className="h-4 w-4" />
-                                        </button>
+                                        {/* === Conditionally Render Reminder Button === */}
+                                        {isPatientView && (
+                                            <button
+                                                onClick={() => handleOpenReminderModal(rx)} // Open modal with current rx
+                                                className="p-1.5 text-off-white/50 hover:text-pastel-peach hover:bg-pastel-peach/10 rounded-full transition-colors duration-150"
+                                                title="Set reminder for this medication"
+                                            >
+                                                <FaBell className="h-4 w-4" />
+                                            </button>
+                                        )}
                                     </div>
                                     {/* Prescription Details */}
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs pl-6 text-off-white/80 mb-2">

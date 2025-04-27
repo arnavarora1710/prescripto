@@ -23,7 +23,8 @@ const PatientPrescriptionsPage: React.FC = () => {
 
     // Get the basic profile from context for checks and ID
     const basicPatientProfile = authProfile?.role === 'patient' ? authProfile : null;
-    // const patientUsername = basicPatientProfile?.username || 'Patient'; // Unused
+    // Determine if the current view is for a patient
+    const isPatientView = authProfile?.role === 'patient';
 
     // Overall loading combines auth loading and page data loading
     const loading = authLoading || loadingPageData;
@@ -149,16 +150,18 @@ const PatientPrescriptionsPage: React.FC = () => {
                                             <span>{rx.medication || 'Unnamed Prescription'} (No visit link)</span>
                                         </div>
                                     )}
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleOpenReminderModal(rx);
-                                        }}
-                                        className="ml-4 flex-shrink-0 p-2 rounded-full hover:bg-electric-blue/20 text-electric-blue/70 hover:text-electric-blue transition-colors duration-200"
-                                        title={`Set reminder for ${rx.medication}`}
-                                    >
-                                        <FaBell className="h-4 w-4" />
-                                    </button>
+                                    {isPatientView && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleOpenReminderModal(rx);
+                                            }}
+                                            className="ml-4 flex-shrink-0 p-2 rounded-full hover:bg-electric-blue/20 text-electric-blue/70 hover:text-electric-blue transition-colors duration-200"
+                                            title={`Set reminder for ${rx.medication}`}
+                                        >
+                                            <FaBell className="h-4 w-4" />
+                                        </button>
+                                    )}
                                 </li>
                             ))}
                         </ul>

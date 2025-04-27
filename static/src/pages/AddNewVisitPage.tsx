@@ -97,6 +97,7 @@ const AddNewVisitPage: React.FC = () => {
     const [fullPatientDataForVisit, setFullPatientDataForVisit] = useState<FullPatientData | null>(null);
     const [currentPrescriptionsList, setCurrentPrescriptionsList] = useState<CurrentPrescriptionDto[]>([]);
     const [patientAllergiesList, setPatientAllergiesList] = useState<string[]>([]);
+    const [insuranceCoverage, setInsuranceCoverage] = useState<any | null>(null); // State for coverage JSON
     const [canRegenerate, setCanRegenerate] = useState(false);
     const [loadingRegenerate, setLoadingRegenerate] = useState(false);
     // --- End New State ---
@@ -375,28 +376,28 @@ Patient: ${selectedPatient.username} (ID: ${selectedPatient.id})
 Visit Reason: ${visitReason}
 Clinician Notes: ${visitNotes}
 Patient Information:
-  - Allergies: ${patientAllergiesList.join(', ') || 'None listed'}
-  - Current Medications: ${currentPrescriptionsList.map(p => p.medicationName).join(', ') || 'None listed'}
-  - Provided Medical History Snippet: ${JSON.stringify(patientData.medical_history || '{}').substring(0, 150)}... (Note: This history is provided for context but may contain unrelated, outdated, or erroneous entries. Use clinical judgment to assess relevance to the current Visit Reason.)
+  - Allergies: ${JSON.stringify(patientData.medical_history || '{}').substring(0, 150) || 'None listed'}
+  - Insurance Plan Formulary (Coverage Data - Use this for recommendations if possible):
+    ${insuranceCoverage ? JSON.stringify(insuranceCoverage, null, 2) : 'Patient has no insurance plan data available.'} 
 
 Instructions:
 Suggest up to 3 distinct prescription options appropriate for the **Visit Reason** ('${visitReason}') and **Clinician Notes**.
-Base your suggestions primarily on the current clinical encounter details.
-Consider the patient's listed allergies and current medications for potential interactions relevant to the suggested options.
-Filter the provided medical history; only consider entries directly relevant to the current '${visitReason}' when formulating suggestions.
-Do NOT refuse to answer based on the content of the medical history snippet alone; focus on providing appropriate options for the current visit's stated reason.
+**Prioritize** suggesting medications found in the patient's **Insurance Plan Formulary** if clinically suitable. Look for matches based on drug names in the formulary JSON.
+If multiple covered options exist, prefer those with lower tiers/copays.
+If no suitable medication is found *within the formulary*, suggest common alternatives but clearly state "Not listed in formulary".
+Consider the patient's listed **Allergies** (${JSON.stringify(patientData.medical_history || '{}').substring(0, 150) || 'None listed'}) and current medications for potential interactions.
 For each recommendation, provide:
-1. Medication Name
+1. Medication Name (Try to match name in formulary if covered)
 2. Dosage (e.g., "10mg", "500mg") or "N/A"
 3. Frequency (e.g., "once daily", "twice daily", "as needed") or "N/A"
-4. Brief Notes/Rationale (max 20 words, focused on suitability for the current visit reason).
+4. Brief Notes/Rationale (max 25 words, **MUST include coverage status like 'Covered - Tier X, Copay $Y, PA Needed: [Yes/No]' OR 'Not listed in formulary'**).
 
 Output Format:
 Respond ONLY with the recommendations, strictly following the format below, separated by "${RECOMMENDATION_DELIMITER}". Do not include any introductory, concluding, or refusal text.
 Medication Name: [Name]
 Dosage: [Dosage]
 Frequency: [Frequency]
-LLM Notes: [Rationale]
+LLM Notes: [Rationale including Coverage Status, Copay, and Prior Auth]
 ${RECOMMENDATION_DELIMITER}
 ... (up to 3 total)
 `;
@@ -454,16 +455,41 @@ ${RECOMMENDATION_DELIMITER}
 
     const fetchPatientContextData = async (patientId: string) => {
         try {
-            console.log("Fetching context data (allergies, current meds) for", patientId);
+            console.log("Fetching context data (patient, allergies, current meds, insurance) for", patientId);
             // Fetch full patient data again (might already have it, but ensure it's fresh)
             const { data: patientData, error: patientError } = await supabase
                 .from('patients')
-                .select('*')
+                .select('*, insurance_details') // Ensure insurance_details is selected
                 .eq('id', patientId)
                 .single();
             if (patientError) throw new Error(`Patient Fetch Error: ${patientError.message}`);
             if (!patientData) throw new Error("Patient not found");
             setFullPatientDataForVisit(patientData as FullPatientData);
+
+            // --- Fetch Insurance Coverage --- 
+            setInsuranceCoverage(null); // Reset coverage
+            const insuranceDetails = patientData.insurance_details as any;
+            if (insuranceDetails && insuranceDetails.group_number) {
+                console.log(`Fetching insurance plan for group number: ${insuranceDetails.group_number}`);
+                const { data: planData, error: planError } = await supabase
+                    .from('insurance_plans')
+                    .select('coverage')
+                    .eq('group_number', insuranceDetails.group_number)
+                    .maybeSingle(); // Use maybeSingle as plan might not exist
+
+                if (planError) {
+                    console.error("Error fetching insurance plan:", planError);
+                    // Don't throw error, just proceed without coverage data
+                } else if (planData && planData.coverage) {
+                    setInsuranceCoverage(planData.coverage);
+                    console.log("Fetched Insurance Coverage Data:", planData.coverage);
+                } else {
+                    console.log("No matching insurance plan found for group number:", insuranceDetails.group_number);
+                }
+            } else {
+                console.log("Patient has no insurance details or group number recorded.");
+            }
+            // --- End Fetch Insurance --- 
 
             // Fetch current prescriptions
             const { data: currentMeds, error: medsError } = await supabase
@@ -476,23 +502,15 @@ ${RECOMMENDATION_DELIMITER}
             setCurrentPrescriptionsList((currentMeds as CurrentPrescriptionDto[]) || []);
             console.log("Fetched Current Meds:", currentMeds);
 
-            // Parse allergies (Replace with more robust parsing as needed)
+            // Parse allergies (Updated Logic)
             const history = patientData.medical_history as any;
             let allergies: string[] = [];
-            if (history && typeof history === 'object') {
-                if (Array.isArray(history.allergies)) {
-                    allergies = history.allergies.filter((a: any) => typeof a === 'string');
-                } else {
-                    // Fallback basic check (improve this)
-                    Object.entries(history).forEach(([key, value]) => {
-                        if (typeof key === 'string' && key.toLowerCase().includes('allergy') && typeof value === 'string') {
-                            allergies.push(value);
-                        }
-                    });
-                }
+            if (history && typeof history === 'object' && !Array.isArray(history)) {
+                // Directly use the keys of the medical_history object as allergies
+                allergies = Object.keys(history);
             }
             setPatientAllergiesList(allergies);
-            console.log("Parsed Allergies:", allergies);
+            console.log("Parsed Allergies (Keys):", allergies);
 
         } catch (error: any) {
             console.error("Error fetching patient context data:", error);
@@ -501,6 +519,7 @@ ${RECOMMENDATION_DELIMITER}
             setCurrentPrescriptionsList([]);
             setPatientAllergiesList([]);
             setFullPatientDataForVisit(null);
+            setInsuranceCoverage(null); // Reset coverage on error
         }
     };
 
@@ -702,9 +721,10 @@ Context:
 Patient: ${selectedPatient.username} (ID: ${selectedPatient.id})
 Visit Reason: ${visitReason}
 Clinician Notes: ${visitNotes}
-Allergies: ${patientAllergiesList.join(', ') || 'None listed'}
+Allergies: ${JSON.stringify(patientData.medical_history || '{}').substring(0, 150) || 'None listed'}
 Current Medications: ${currentPrescriptionsList.map(p => p.medicationName).join(', ') || 'None listed'}
-Relevant Medical History: ${JSON.stringify(patientData.medical_history || '{}').substring(0, 100)}...
+Insurance Plan Formulary (Coverage Data):
+  ${insuranceCoverage ? JSON.stringify(insuranceCoverage, null, 2) : 'No insurance plan data available.'}
 
 Previously Rejected Recommendations (Do NOT suggest these again):
 ${rejectedRecommendationsText || 'None'}
@@ -714,20 +734,22 @@ ${existingNonRejectedNames || 'None'}
 
 Instructions:
 Suggest exactly **${numberOfNewSuggestionsNeeded}** *new* and *distinct* prescription options to replace the rejected ones.
-These new options must be appropriate for the original Visit Reason and Clinician Notes, considering the patient context.
-They must be different from *both* the rejected list *and* the existing approved/pending list.
+These new options must be appropriate for the original Visit Reason and Clinician Notes, considering the patient context (including **Allergies**: ${JSON.stringify(patientData.medical_history || '{}').substring(0, 150) || 'None listed'}).
+**Prioritize** suggestions found in the **Insurance Plan Formulary**, preferring lower tiers/copays if clinically appropriate.
+If no suitable *covered* replacement is found, suggest common alternatives stating "Not listed in formulary".
+New suggestions must be different from *both* the rejected list *and* the existing approved/pending list.
 For each new option, provide:
-1. Medication Name
+1. Medication Name (Try to match name in formulary if covered)
 2. Dosage
 3. Frequency
-4. Brief Notes/Rationale (max 20 words)
+4. Brief Notes/Rationale (max 25 words, **MUST include coverage status like 'Covered - Tier X, Copay $Y, PA Needed: [Yes/No]' OR 'Not listed in formulary'**).
 
 Output Format:
 Respond ONLY with the ${numberOfNewSuggestionsNeeded} new recommendations, strictly following the format below, separated by "${RECOMMENDATION_DELIMITER}". Do not include any introductory, concluding, or refusal text.
 Medication Name: [Name]
 Dosage: [Dosage]
 Frequency: [Frequency]
-LLM Notes: [Rationale]
+LLM Notes: [Rationale including Coverage Status, Copay, and Prior Auth]
 ${RECOMMENDATION_DELIMITER}
 ... (exactly ${numberOfNewSuggestionsNeeded} times)
 `;

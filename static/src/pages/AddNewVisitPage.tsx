@@ -129,7 +129,7 @@ const AddNewVisitPage: React.FC = () => {
             } finally {
                 setLoadingSearch(false);
             }
-        }, 700); // Increased debounce to 700ms
+        }, 100); // Set debounce to 100ms
 
         // Cleanup function
         return () => clearTimeout(timerId);
@@ -699,7 +699,6 @@ Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
                             value={searchTerm}
                             onChange={handleSearchChange}
                             className="w-full px-4 py-2.5 pl-10 rounded-md bg-dark-input border border-border-color text-white placeholder-off-white/50 focus:outline-none focus:ring-2 focus:ring-electric-blue focus:border-transparent transition duration-150"
-                            disabled={loadingSearch}
                         />
                         <FaSearch className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-off-white/40 pointer-events-none" />
                     </div>

@@ -3,8 +3,8 @@ import { supabase } from '../lib/supabaseClient';
 import { Prescription } from '../types/app';
 import { useAuth } from '../context/AuthContext';
 import { FaSpinner, FaArrowLeft, FaFilePrescription, FaUserMd, FaCalendarDay, FaAngleRight } from 'react-icons/fa';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+// import jsPDF from 'jspdf'; // Unused
+// import autoTable from 'jspdf-autotable'; // Unused
 import { useNavigate, Link } from 'react-router-dom';
 import { format } from 'date-fns';
 
@@ -18,7 +18,7 @@ const PatientPrescriptionsPage: React.FC = () => {
 
     // Get the basic profile from context for checks and ID
     const basicPatientProfile = authProfile?.role === 'patient' ? authProfile : null;
-    const patientUsername = basicPatientProfile?.username || 'Patient'; // Get username for PDF if needed
+    // const patientUsername = basicPatientProfile?.username || 'Patient'; // Unused
 
     // Overall loading combines auth loading and page data loading
     const loading = authLoading || loadingPageData;
@@ -64,87 +64,7 @@ const PatientPrescriptionsPage: React.FC = () => {
     }, [basicPatientProfile?.profileId, authLoading]);
 
     // --- PDF Generation Function (Copied from PatientProfilePage) ---
-    const generatePrescriptionPdf = (prescription: Prescription) => {
-        // Use patientUsername from auth context if available
-        const doc = new jsPDF();
-        const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
-        const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
-        let currentY = 15;
-
-        // Header
-        doc.setFontSize(18);
-        doc.setFont('helvetica', 'bold');
-        doc.text("Prescription Record", pageWidth / 2, currentY, { align: 'center' });
-        currentY += 10;
-
-        // Patient & Prescriber Info
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        const patientInfoX = 15;
-        const clinicianInfoX = pageWidth / 2 + 10;
-        const infoStartY = currentY;
-
-        doc.setFont('helvetica', 'bold');
-        doc.text("Patient:", patientInfoX, currentY);
-        doc.setFont('helvetica', 'normal');
-        currentY += 5;
-        doc.text(`Name: ${patientUsername}`, patientInfoX, currentY);
-
-        currentY = infoStartY; // Reset Y
-        doc.setFont('helvetica', 'bold');
-        doc.text("Prescriber:", clinicianInfoX, currentY);
-        doc.setFont('helvetica', 'normal');
-        currentY += 5;
-        doc.text(`Name: ${prescription.clinicians?.username || 'Unknown'}`, clinicianInfoX, currentY);
-        currentY += 5;
-        doc.text(`Date Issued: ${new Date(prescription.created_at).toLocaleDateString()}`, clinicianInfoX, currentY);
-
-        currentY = Math.max(currentY, infoStartY + 15);
-        currentY += 5;
-        doc.setLineWidth(0.2);
-        doc.line(15, currentY, pageWidth - 15, currentY); // Divider
-        currentY += 10;
-
-        // Prescription Details Table
-        autoTable(doc, {
-            startY: currentY,
-            head: [['Medication', 'Dosage', 'Frequency']],
-            body: [
-                [
-                    prescription.medication || 'N/A',
-                    prescription.dosage || 'N/A',
-                    prescription.frequency || 'N/A',
-                ],
-            ],
-            theme: 'grid',
-            headStyles: { fillColor: [60, 70, 90] },
-            styles: { fontSize: 10, cellPadding: 2 },
-            margin: { left: 15, right: 15 },
-            didDrawPage: (data) => {
-                currentY = data.cursor?.y || currentY;
-            }
-        });
-
-        currentY += 10;
-
-        // Notes
-        if (prescription.notes) {
-            doc.setFont('helvetica', 'bold');
-            doc.text("Notes:", 15, currentY);
-            currentY += 5;
-            doc.setFont('helvetica', 'normal');
-            const notesLines = doc.splitTextToSize(prescription.notes, pageWidth - 30);
-            doc.text(notesLines, 15, currentY);
-            currentY += notesLines.length * 4;
-        }
-
-        currentY = pageHeight - 15;
-        doc.setFontSize(8);
-        doc.setTextColor(150);
-        doc.text("This is a record of a prescription generated via Prescripto.", pageWidth / 2, currentY, { align: 'center' });
-
-        doc.save(`Prescription_Record_${new Date(prescription.created_at).toISOString().split('T')[0]}.pdf`);
-    };
+    // const generatePrescriptionPdf = (prescription: Prescription) => {
     // --- End PDF Generation Function ---
 
     // Render Logic

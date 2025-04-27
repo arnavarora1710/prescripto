@@ -3,8 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { Visit, Prescription, Patient, Clinician } from '../types/app'; // Import necessary types
 import { useAuth } from '../context/AuthContext'; // To check user role if needed
-import { FaSpinner, FaArrowLeft, FaCalendarAlt, FaUserMd, FaNotesMedical, FaRegCommentDots, FaFilePrescription, FaPills, FaStickyNote, FaUserCircle } from 'react-icons/fa';
+import { FaSpinner, FaArrowLeft, FaCalendarAlt, FaUserMd, FaNotesMedical, FaRegCommentDots, FaFilePrescription, FaPills, FaStickyNote, FaUserCircle, FaFileDownload } from 'react-icons/fa';
 import { format } from 'date-fns';
+// Import PDF generation libraries
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 // Define a type for the full visit details expected from the database/RPC
 interface FullVisitDetails extends Visit {
@@ -64,6 +67,107 @@ const VisitDetailPage: React.FC = () => {
         fetchVisitDetails();
     }, [visitId]);
 
+    // --- PDF Generation Function ---
+    const generateVisitPdf = () => {
+        if (!visit) {
+            console.error("Visit data is not loaded, cannot generate PDF.");
+            alert("Error: Visit data not available to generate PDF.");
+            return;
+        }
+
+        const doc = new jsPDF();
+        const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
+        const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
+        let currentY = 15; // Start position
+
+        // --- Header ---
+        doc.setFontSize(18);
+        doc.setFont('helvetica', 'bold');
+        doc.text("Visit Summary", pageWidth / 2, currentY, { align: 'center' });
+        currentY += 10;
+
+        // --- Visit Info ---
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text("Visit Details", 15, currentY);
+        currentY += 6;
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Date: ${format(new Date(visit.visit_date), 'PPPp')}`, 15, currentY);
+        currentY += 5;
+        doc.text(`Patient: ${visit.patients?.username || 'N/A'}`, 15, currentY);
+        currentY += 5;
+        doc.text(`Clinician: ${visit.clinicians?.username || 'N/A'}`, 15, currentY);
+        currentY += 5;
+        const reasonLines = doc.splitTextToSize(`Reason: ${visit.reason || 'N/A'}`, pageWidth - 30); // Use full width minus margins
+        doc.text(reasonLines, 15, currentY);
+        currentY += (reasonLines.length * 4) + 5; // Adjust Y based on number of lines for reason
+
+
+        // --- Visit Notes ---
+        if (visit.notes) {
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'bold');
+            doc.text("Visit Notes", 15, currentY);
+            currentY += 6;
+            doc.setFontSize(9); // Smaller font for notes
+            doc.setFont('helvetica', 'normal');
+            const notesLines = doc.splitTextToSize(visit.notes, pageWidth - 30);
+            // Add a box around notes for clarity
+            doc.setDrawColor(200); // Light grey border
+            doc.rect(14, currentY - 3, pageWidth - 28, (notesLines.length * 3.5) + 5); // x, y, width, height
+            doc.text(notesLines, 15, currentY);
+            currentY += (notesLines.length * 3.5) + 8; // Adjust Y + padding
+        }
+
+        // --- Prescriptions Table ---
+        if (visit.prescriptions && visit.prescriptions.length > 0) {
+            currentY += 5; // Add some space before the table
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'bold');
+            doc.text("Prescriptions Issued", 15, currentY);
+            currentY += 6;
+
+            autoTable(doc, {
+                startY: currentY,
+                head: [['Medication', 'Dosage', 'Frequency', 'Notes']],
+                body: visit.prescriptions.map(rx => [
+                    rx.medication || 'N/A',
+                    rx.dosage || 'N/A',
+                    rx.frequency || 'N/A',
+                    rx.notes || 'N/A'
+                ]),
+                theme: 'grid',
+                headStyles: { fillColor: [60, 70, 90] }, // Dark blue-gray header
+                styles: { fontSize: 9, cellPadding: 2 },
+                columnStyles: {
+                     3: { cellWidth: 'auto'} // Allow Notes column to wrap
+                },
+                margin: { left: 15, right: 15 },
+                didDrawPage: (data) => {
+                    currentY = data.cursor?.y || currentY; // Update Y position after table
+                }
+            });
+            currentY += 5; // Space after table
+        } else {
+             doc.setFontSize(10);
+             doc.setFont('helvetica', 'italic');
+             doc.text("No prescriptions were issued during this visit.", 15, currentY);
+             currentY += 10;
+        }
+
+        // --- Footer ---
+        const footerY = pageHeight - 10;
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        doc.text(`Generated on ${format(new Date(), 'PPP')} | Visit ID: ${visit.id}`, 15, footerY);
+        doc.text("Prescripto Visit Summary", pageWidth - 15, footerY, { align: 'right' });
+
+
+        doc.save(`Visit_Summary_${patientName.replace(/\s+/g, '_')}_${format(new Date(visit.visit_date), 'yyyyMMdd')}.pdf`);
+    };
+    // --- End PDF Generation Function ---
+
     // --- Render Logic ---
     if (authLoading || loading) {
         return (
@@ -109,6 +213,17 @@ const VisitDetailPage: React.FC = () => {
                 <h1 className="text-3xl sm:text-4xl font-bold text-white text-center flex-grow">Visit Details</h1>
                 <div className="w-20"></div> {/* Spacer */}
             </div>
+
+            {/* Add Download PDF Button */}
+             <div className="mb-6 text-right">
+                 <button
+                    onClick={generateVisitPdf}
+                    className="inline-flex items-center px-4 py-2 border border-pastel-blue text-pastel-blue rounded-md shadow-sm text-sm font-medium bg-transparent hover:bg-pastel-blue hover:text-dark-card focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-bg focus:ring-pastel-blue transition duration-150 active:scale-95 group"
+                 >
+                    <FaFileDownload className="mr-2 h-4 w-4" />
+                    Download PDF Summary
+                 </button>
+             </div>
 
             {/* Main Content Card */}
             <div className="bg-dark-card p-6 sm:p-8 rounded-xl shadow-lg border border-border-color animate-fade-in">

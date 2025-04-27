@@ -11,6 +11,7 @@
 /Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/OcrRequestDto.java
 /Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/OcrResponseDto.java
 /Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/PatientDto.java
+/Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/PrescribedDrugDto.java
 /Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/PrescriptionRequestDto.java
 /Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/PrescriptionValidationRequest.java
 /Users/shashank/prescripto/src/main/java/com/hacktech/healthai/dto/ProposedPrescriptionDto.java

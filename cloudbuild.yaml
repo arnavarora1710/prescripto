@@ -65,8 +65,8 @@ options:
 availableSecrets:
   secretManager:
     - env: 'VITE_SUPABASE_URL'
-      versionName: projects/$PROJECT_ID/secrets/SUPABASE_URL/versions/latest
+      versionName: projects/$PROJECT_ID/secrets/VITE_SUPABASE_URL/versions/latest
     - env: 'VITE_SUPABASE_ANON_KEY'
-      versionName: projects/$PROJECT_ID/secrets/SUPABASE_ANON_KEY/versions/latest
+      versionName: projects/$PROJECT_ID/secrets/VITE_SUPABASE_ANON_KEY/versions/latest
     - env: 'VITE_GEMINI_API_KEY'
-      versionName: projects/$PROJECT_ID/secrets/GEMINI_API_KEY/versions/latest
+      versionName: projects/$PROJECT_ID/secrets/VITE_GEMINI_API_KEY/versions/latest

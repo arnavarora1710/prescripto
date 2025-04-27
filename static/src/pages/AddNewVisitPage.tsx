@@ -56,6 +56,7 @@ interface Recommendation {
     status: 'pending' | 'approved' | 'rejected';
     clinicianComment: string;
     validationIssue?: string; // To display backend warnings
+    copayInfo?: string; // e.g., "$10.00", "Not Covered", "N/A"
 }
 // --- End Recommendation State Structure ---
 
@@ -97,6 +98,7 @@ const AddNewVisitPage: React.FC = () => {
     const [fullPatientDataForVisit, setFullPatientDataForVisit] = useState<FullPatientData | null>(null);
     const [currentPrescriptionsList, setCurrentPrescriptionsList] = useState<CurrentPrescriptionDto[]>([]);
     const [patientAllergiesList, setPatientAllergiesList] = useState<string[]>([]);
+    const [insuranceCoverage, setInsuranceCoverage] = useState<any | null>(null); // State for coverage JSON
     const [canRegenerate, setCanRegenerate] = useState(false);
     const [loadingRegenerate, setLoadingRegenerate] = useState(false);
     // --- End New State ---
@@ -299,7 +301,8 @@ const AddNewVisitPage: React.FC = () => {
                     llmNotes: stripAsterisks(notesMatch?.[1]) || 'N/A',
                     status: 'pending',
                     clinicianComment: '',
-                    validationIssue: undefined
+                    validationIssue: undefined,
+                    copayInfo: undefined // Initialize copayInfo
                 });
             }
         }
@@ -307,6 +310,46 @@ const AddNewVisitPage: React.FC = () => {
         console.log("Parsed Recommendations (Asterisks Removed):", recommendations);
         return recommendations;
     };
+
+    // --- Function to Extract Copay Info using LLM ---
+    const extractCopayFromNotes = async (notes: string): Promise<string> => {
+        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+        if (!apiKey || !notes) {
+            console.warn("Gemini API Key or notes missing, cannot extract copay.");
+            return "N/A";
+        }
+
+        try {
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+
+            const prompt = `Analyze the following prescription notes and extract only the patient's copay amount or coverage status.
+            Notes: "${notes}"
+
+            Desired Output Rules:
+            1. If a specific dollar amount is mentioned (e.g., "Copay $10", "Expected cost: $25.50"), return only the number (e.g., "10", "25.50").
+            2. If the notes indicate it's not covered or not listed (e.g., "Not listed in formulary", "Not covered"), return "Not Covered".
+            3. If no clear copay or coverage information is found, return "N/A".
+
+            Return ONLY the extracted value ("10", "25.50", "Not Covered", or "N/A"). Do not include currency symbols or any other text.`;
+
+            const result = await model.generateContent(prompt);
+            const response = result.response;
+            const text = response.text().trim();
+
+            // Basic validation
+            if (!isNaN(parseFloat(text)) || text === "Not Covered" || text === "N/A") {
+                return text;
+            } else {
+                console.warn(`Unexpected LLM output for copay extraction from notes "${notes}":`, text);
+                return "N/A"; // Default to N/A on unexpected output
+            }
+        } catch (error) {
+            console.error(`Error calling Gemini for copay extraction from notes "${notes}":`, error);
+            return "Error"; // Indicate an error occurred
+        }
+    };
+    // --- End Copay Extraction Function ---
 
     const handleCreateVisit = async (e?: React.FormEvent) => { // Made event optional
         if (e) e.preventDefault(); // Prevent default if called from form submit
@@ -375,28 +418,28 @@ Patient: ${selectedPatient.username} (ID: ${selectedPatient.id})
 Visit Reason: ${visitReason}
 Clinician Notes: ${visitNotes}
 Patient Information:
-  - Allergies: ${patientAllergiesList.join(', ') || 'None listed'}
-  - Current Medications: ${currentPrescriptionsList.map(p => p.medicationName).join(', ') || 'None listed'}
-  - Provided Medical History Snippet: ${JSON.stringify(patientData.medical_history || '{}').substring(0, 150)}... (Note: This history is provided for context but may contain unrelated, outdated, or erroneous entries. Use clinical judgment to assess relevance to the current Visit Reason.)
+  - Allergies: ${JSON.stringify(patientData.medical_history || '{}').substring(0, 150) || 'None listed'}
+  - Insurance Plan Formulary (Coverage Data - Use this for recommendations if possible):
+    ${insuranceCoverage ? JSON.stringify(insuranceCoverage, null, 2) : 'Patient has no insurance plan data available.'} 
 
 Instructions:
 Suggest up to 3 distinct prescription options appropriate for the **Visit Reason** ('${visitReason}') and **Clinician Notes**.
-Base your suggestions primarily on the current clinical encounter details.
-Consider the patient's listed allergies and current medications for potential interactions relevant to the suggested options.
-Filter the provided medical history; only consider entries directly relevant to the current '${visitReason}' when formulating suggestions.
-Do NOT refuse to answer based on the content of the medical history snippet alone; focus on providing appropriate options for the current visit's stated reason.
+**Prioritize** suggesting medications found in the patient's **Insurance Plan Formulary** if clinically suitable. Look for matches based on drug names in the formulary JSON.
+If multiple covered options exist, prefer those with lower tiers/copays.
+If no suitable medication is found *within the formulary*, suggest common alternatives but clearly state "Not listed in formulary".
+Consider the patient's listed **Allergies** (${JSON.stringify(patientData.medical_history || '{}').substring(0, 150) || 'None listed'}) and current medications for potential interactions.
 For each recommendation, provide:
-1. Medication Name
+1. Medication Name (Try to match name in formulary if covered)
 2. Dosage (e.g., "10mg", "500mg") or "N/A"
 3. Frequency (e.g., "once daily", "twice daily", "as needed") or "N/A"
-4. Brief Notes/Rationale (max 20 words, focused on suitability for the current visit reason).
+4. Brief Notes/Rationale (max 25 words, **MUST include coverage status like 'Covered - Tier X, Copay $Y, PA Needed: [Yes/No]' OR 'Not listed in formulary'**).
 
 Output Format:
 Respond ONLY with the recommendations, strictly following the format below, separated by "${RECOMMENDATION_DELIMITER}". Do not include any introductory, concluding, or refusal text.
 Medication Name: [Name]
 Dosage: [Dosage]
 Frequency: [Frequency]
-LLM Notes: [Rationale]
+LLM Notes: [Rationale including Coverage Status, Copay, and Prior Auth]
 ${RECOMMENDATION_DELIMITER}
 ... (up to 3 total)
 `;
@@ -454,16 +497,41 @@ ${RECOMMENDATION_DELIMITER}
 
     const fetchPatientContextData = async (patientId: string) => {
         try {
-            console.log("Fetching context data (allergies, current meds) for", patientId);
+            console.log("Fetching context data (patient, allergies, current meds, insurance) for", patientId);
             // Fetch full patient data again (might already have it, but ensure it's fresh)
             const { data: patientData, error: patientError } = await supabase
                 .from('patients')
-                .select('*')
+                .select('*, insurance_details') // Ensure insurance_details is selected
                 .eq('id', patientId)
                 .single();
             if (patientError) throw new Error(`Patient Fetch Error: ${patientError.message}`);
             if (!patientData) throw new Error("Patient not found");
             setFullPatientDataForVisit(patientData as FullPatientData);
+
+            // --- Fetch Insurance Coverage --- 
+            setInsuranceCoverage(null); // Reset coverage
+            const insuranceDetails = patientData.insurance_details as any;
+            if (insuranceDetails && insuranceDetails.group_number) {
+                console.log(`Fetching insurance plan for group number: ${insuranceDetails.group_number}`);
+                const { data: planData, error: planError } = await supabase
+                    .from('insurance_plans')
+                    .select('coverage')
+                    .eq('group_number', insuranceDetails.group_number)
+                    .maybeSingle(); // Use maybeSingle as plan might not exist
+
+                if (planError) {
+                    console.error("Error fetching insurance plan:", planError);
+                    // Don't throw error, just proceed without coverage data
+                } else if (planData && planData.coverage) {
+                    setInsuranceCoverage(planData.coverage);
+                    console.log("Fetched Insurance Coverage Data:", planData.coverage);
+                } else {
+                    console.log("No matching insurance plan found for group number:", insuranceDetails.group_number);
+                }
+            } else {
+                console.log("Patient has no insurance details or group number recorded.");
+            }
+            // --- End Fetch Insurance --- 
 
             // Fetch current prescriptions
             const { data: currentMeds, error: medsError } = await supabase
@@ -476,23 +544,15 @@ ${RECOMMENDATION_DELIMITER}
             setCurrentPrescriptionsList((currentMeds as CurrentPrescriptionDto[]) || []);
             console.log("Fetched Current Meds:", currentMeds);
 
-            // Parse allergies (Replace with more robust parsing as needed)
+            // Parse allergies (Updated Logic)
             const history = patientData.medical_history as any;
             let allergies: string[] = [];
-            if (history && typeof history === 'object') {
-                if (Array.isArray(history.allergies)) {
-                    allergies = history.allergies.filter((a: any) => typeof a === 'string');
-                } else {
-                    // Fallback basic check (improve this)
-                    Object.entries(history).forEach(([key, value]) => {
-                        if (typeof key === 'string' && key.toLowerCase().includes('allergy') && typeof value === 'string') {
-                            allergies.push(value);
-                        }
-                    });
-                }
+            if (history && typeof history === 'object' && !Array.isArray(history)) {
+                // Directly use the keys of the medical_history object as allergies
+                allergies = Object.keys(history);
             }
             setPatientAllergiesList(allergies);
-            console.log("Parsed Allergies:", allergies);
+            console.log("Parsed Allergies (Keys):", allergies);
 
         } catch (error: any) {
             console.error("Error fetching patient context data:", error);
@@ -501,6 +561,7 @@ ${RECOMMENDATION_DELIMITER}
             setCurrentPrescriptionsList([]);
             setPatientAllergiesList([]);
             setFullPatientDataForVisit(null);
+            setInsuranceCoverage(null); // Reset coverage on error
         }
     };
 
@@ -616,18 +677,40 @@ ${RECOMMENDATION_DELIMITER}
         setFinalizeError(null);
         setSuccessMessage(null);
 
-        const prescriptionsToInsert = finalPrescriptions.map(fp => ({
-            patient_id: selectedPatient.id,
-            clinician_id: clinicianId,
-            visit_id: visitId,
-            medication: fp.medicationName,
-            dosage: fp.dosage,
-            frequency: fp.frequency,
-            notes: fp.clinicianComment || null, // Save clinician comment as notes
-        }));
+        // --- Extract Copay Info BEFORE Inserting --- 
+        const copayExtractionPromises = finalPrescriptions.map(async (fp) => {
+            // Extract copay from the original LLM notes
+            const copay = await extractCopayFromNotes(fp.llmNotes);
+            return { ...fp, copayInfo: copay }; // Return the prescription with copayInfo added
+        });
+
+        const prescriptionsWithCopay = await Promise.all(copayExtractionPromises);
+        // --- End Copay Extraction --- 
+
+        // Map prescriptions for insertion, now including the extracted copay info in the notes
+        const prescriptionsToInsert = prescriptionsWithCopay.map(fp => {
+            // Combine original notes, clinician comment, and copay info
+            let combinedNotes = fp.llmNotes;
+            if (fp.clinicianComment) {
+                combinedNotes += `\n\nClinician Comment: ${fp.clinicianComment}`;
+            }
+            if (fp.copayInfo) {
+                combinedNotes += `\n\n|| COPAY_INFO: ${fp.copayInfo} ||`; // Embed copay info
+            }
+
+            return {
+                patient_id: selectedPatient.id,
+                clinician_id: clinicianId,
+                visit_id: visitId!,
+                medication: fp.medicationName,
+                dosage: fp.dosage,
+                frequency: fp.frequency,
+                notes: combinedNotes.trim(), // Use the combined notes string
+            };
+        });
 
         try {
-            console.log("Inserting final prescriptions:", prescriptionsToInsert);
+            console.log("Inserting final prescriptions (with embedded copay info):", prescriptionsToInsert);
             const { error: insertError } = await supabase
                 .from('prescriptions')
                 .insert(prescriptionsToInsert);
@@ -702,9 +785,10 @@ Context:
 Patient: ${selectedPatient.username} (ID: ${selectedPatient.id})
 Visit Reason: ${visitReason}
 Clinician Notes: ${visitNotes}
-Allergies: ${patientAllergiesList.join(', ') || 'None listed'}
+Allergies: ${JSON.stringify(patientData.medical_history || '{}').substring(0, 150) || 'None listed'}
 Current Medications: ${currentPrescriptionsList.map(p => p.medicationName).join(', ') || 'None listed'}
-Relevant Medical History: ${JSON.stringify(patientData.medical_history || '{}').substring(0, 100)}...
+Insurance Plan Formulary (Coverage Data):
+  ${insuranceCoverage ? JSON.stringify(insuranceCoverage, null, 2) : 'No insurance plan data available.'}
 
 Previously Rejected Recommendations (Do NOT suggest these again):
 ${rejectedRecommendationsText || 'None'}
@@ -714,20 +798,22 @@ ${existingNonRejectedNames || 'None'}
 
 Instructions:
 Suggest exactly **${numberOfNewSuggestionsNeeded}** *new* and *distinct* prescription options to replace the rejected ones.
-These new options must be appropriate for the original Visit Reason and Clinician Notes, considering the patient context.
-They must be different from *both* the rejected list *and* the existing approved/pending list.
+These new options must be appropriate for the original Visit Reason and Clinician Notes, considering the patient context (including **Allergies**: ${JSON.stringify(patientData.medical_history || '{}').substring(0, 150) || 'None listed'}).
+**Prioritize** suggestions found in the **Insurance Plan Formulary**, preferring lower tiers/copays if clinically appropriate.
+If no suitable *covered* replacement is found, suggest common alternatives stating "Not listed in formulary".
+New suggestions must be different from *both* the rejected list *and* the existing approved/pending list.
 For each new option, provide:
-1. Medication Name
+1. Medication Name (Try to match name in formulary if covered)
 2. Dosage
 3. Frequency
-4. Brief Notes/Rationale (max 20 words)
+4. Brief Notes/Rationale (max 25 words, **MUST include coverage status like 'Covered - Tier X, Copay $Y, PA Needed: [Yes/No]' OR 'Not listed in formulary'**).
 
 Output Format:
 Respond ONLY with the ${numberOfNewSuggestionsNeeded} new recommendations, strictly following the format below, separated by "${RECOMMENDATION_DELIMITER}". Do not include any introductory, concluding, or refusal text.
 Medication Name: [Name]
 Dosage: [Dosage]
 Frequency: [Frequency]
-LLM Notes: [Rationale]
+LLM Notes: [Rationale including Coverage Status, Copay, and Prior Auth]
 ${RECOMMENDATION_DELIMITER}
 ... (exactly ${numberOfNewSuggestionsNeeded} times)
 `;
@@ -756,7 +842,12 @@ ${RECOMMENDATION_DELIMITER}
 
             if (newParsedRecs.length > 0) {
                 // **Merge** new recommendations with existing approved/pending ones
-                setRecommendations([...existingApprovedPending, ...newParsedRecs]);
+                // Reset copayInfo for newly generated ones
+                const finalRecs = [
+                    ...existingApprovedPending,
+                    ...newParsedRecs.map(rec => ({ ...rec, copayInfo: undefined }))
+                ];
+                setRecommendations(finalRecs);
                 setSuccessMessage("New recommendations generated to replace rejected ones.");
                 setCanRegenerate(false); // Hide regenerate button until another rejection
             } else {
@@ -776,7 +867,7 @@ ${RECOMMENDATION_DELIMITER}
         } finally {
             setLoadingRegenerate(false);
         }
-    }, [visitReason, visitNotes, selectedPatient, recommendations, patientAllergiesList, currentPrescriptionsList, fullPatientDataForVisit, parseLlmRecommendations]); // Added parseLlmRecommendations dependency
+    }, [visitReason, visitNotes, selectedPatient, recommendations, patientAllergiesList, currentPrescriptionsList, fullPatientDataForVisit, parseLlmRecommendations, extractCopayFromNotes]); // Added extractCopayFromNotes dependency
 
     // Subscribe to Supabase channel for drawing updates
     const listenForDrawingUpdates = useCallback((channelId: string) => {
@@ -1075,17 +1166,33 @@ ${RECOMMENDATION_DELIMITER}
                             <p className="text-sm text-off-white/70 mb-5">
                                 Scan the QR code with another device (like a tablet) to open the drawing canvas. Notes will appear here automatically.
                             </p>
-                            <div className="flex justify-center mb-5 p-4 bg-white rounded-lg inline-block shadow-lg">
+                            {/* Container for QR code and Link */}
+                            <div className="flex flex-col items-center gap-3">
+                                <div className="p-4 bg-white rounded-lg inline-block shadow-lg">
+                                    {drawingChannelId && (
+                                        <QRCode
+                                            value={`https://prescripto-service-961908516332.us-central1.run.app/draw/${drawingChannelId}`} // URL for QR code
+                                            size={180}
+                                            level="M" // Error correction level
+                                        />
+                                    )}
+                                </div>
+                                {/* Display the URL text as a clickable link */}
                                 {drawingChannelId && (
-                                    <QRCode
-                                        value={`https://prescripto-service-961908516332.us-central1.run.app/draw/${drawingChannelId}`} // Using Spring Boot port 8080 instead of Vite port 5173
-                                        size={180}
-                                        level="M" // Error correction level
-                                    />
+                                    <a
+                                        href={`https://prescripto-service-961908516332.us-central1.run.app/draw/${drawingChannelId}`}
+                                        target="_blank" // Open in new tab
+                                        rel="noopener noreferrer" // Security measure
+                                        className="block text-xs text-pastel-blue hover:text-electric-blue hover:underline mt-1 break-all transition-colors duration-150"
+                                        title="Open drawing page in new tab"
+                                    >
+                                        Open Drawing Link: <span className="font-mono">{`.../draw/${drawingChannelId.substring(0, 8)}...`}</span>
+                                    </a>
                                 )}
                             </div>
+
                             {isListeningForDrawing && (
-                                <div className="flex items-center justify-center text-sm text-pastel-blue py-2 animate-pulse mt-2">
+                                <div className="flex items-center justify-center text-sm text-pastel-blue py-2 animate-pulse mt-4"> {/* Added mt-4 */}
                                     <FaSpinner className="animate-spin h-4 w-4 mr-2" />
                                     <span>Waiting for notes from tablet...</span>
                                 </div>
@@ -1095,7 +1202,7 @@ ${RECOMMENDATION_DELIMITER}
                             )}
                             <button
                                 onClick={handleCancelDrawing}
-                                className="mt-4 px-4 py-2 border border-red-500/70 text-red-400 rounded-md shadow-sm text-sm font-medium bg-transparent hover:bg-red-500/10 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-card focus:ring-red-500 transition duration-200 ease-in-out"
+                                className="mt-5 px-4 py-2 border border-red-500/70 text-red-400 rounded-md shadow-sm text-sm font-medium bg-transparent hover:bg-red-500/10 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-card focus:ring-red-500 transition duration-200 ease-in-out" // Added mt-5
                             >
                                 Cancel Drawing Sync
                             </button>

@@ -1,4 +1,4 @@
-# Prescripto 🚀
+# Prescripto 🫀
 
 **Your AI + Doctor–Powered Prescription Companion**
 

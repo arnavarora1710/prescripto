@@ -47,6 +47,7 @@ images:
 
 # Optional: Increase timeout if builds take longer
 options:
+  logging: CLOUD_LOGGING_ONLY # Use Cloud Logging, don't require a GCS bucket for logs
   machineType: 'N1_HIGHCPU_8' # Use a faster machine type if needed
   # default timeout is 10 minutes
   # timeout: '1200s' # Example: 20 minutes 

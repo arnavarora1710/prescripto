@@ -14,12 +14,20 @@ steps:
     waitFor: ['remove-lockfile'] # Wait for rm to finish
 
   - name: 'node:20'
-    entrypoint: npm
-    args: ['run', 'build']
+    entrypoint: bash
+    # Define secrets from Secret Manager to be available as env vars
+    secretEnv: ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY', 'VITE_GEMINI_API_KEY']
+    args:
+      - -c # Command flag for bash
+      - | # Start of multi-line script
+        echo "VITE_SUPABASE_URL detected." # Confirm var is present (value is secret)
+        echo "VITE_SUPABASE_ANON_KEY detected."
+        echo "VITE_GEMINI_API_KEY detected."
+        # Run the build - Vite will pick up VITE_* env vars
+        npm run build
     dir: 'static' # Run npm build in the static directory
     id: 'npm-build'
     waitFor: ['npm-install'] # Wait for install to finish
-    secretEnv: ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY', 'VITE_GEMINI_API_KEY']
 
   # 2. Build the Docker image
   # The image will be tagged with the commit SHA and 'latest'
@@ -55,18 +63,19 @@ images:
   - 'us-central1-docker.pkg.dev/$PROJECT_ID/prescripto-repo/prescripto-app:$SHORT_SHA'
   - 'us-central1-docker.pkg.dev/$PROJECT_ID/prescripto-repo/prescripto-app:latest'
 
+# Define the secrets to fetch from Secret Manager
+availableSecrets:
+  secretManager:
+  - versionName: projects/$PROJECT_ID/secrets/VITE_SUPABASE_URL/versions/latest
+    env: 'VITE_SUPABASE_URL' # Env var name inside the build step
+  - versionName: projects/$PROJECT_ID/secrets/VITE_SUPABASE_ANON_KEY/versions/latest
+    env: 'VITE_SUPABASE_ANON_KEY'
+  - versionName: projects/$PROJECT_ID/secrets/VITE_GEMINI_API_KEY/versions/latest
+    env: 'VITE_GEMINI_API_KEY'
+
 # Optional: Increase timeout if builds take longer
 options:
   logging: CLOUD_LOGGING_ONLY # Use Cloud Logging, don't require a GCS bucket for logs
   machineType: 'N1_HIGHCPU_8' # Use a faster machine type if needed
   # default timeout is 10 minutes
-  # timeout: '1200s' # Example: 20 minutes
-
-availableSecrets:
-  secretManager:
-    - env: 'VITE_SUPABASE_URL'
-      versionName: projects/$PROJECT_ID/secrets/VITE_SUPABASE_URL/versions/latest
-    - env: 'VITE_SUPABASE_ANON_KEY'
-      versionName: projects/$PROJECT_ID/secrets/VITE_SUPABASE_ANON_KEY/versions/latest
-    - env: 'VITE_GEMINI_API_KEY'
-      versionName: projects/$PROJECT_ID/secrets/VITE_GEMINI_API_KEY/versions/latest
+  # timeout: '1200s' # Example: 20 minutes 

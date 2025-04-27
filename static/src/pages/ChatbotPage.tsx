@@ -30,10 +30,7 @@ const ChatbotPage: React.FC = () => {
     const { profile: authProfile, loading: authLoading, user } = useAuth();
 
     // === State ===
-    const [sessionId] = useState(uuidv4());
-    const [messages, setMessages] = React.useState<ChatMessage[]>([
-        { id: 'init-bot', sender: 'bot', text: 'Hello! How can I help you with your prescriptions today? Ask me about dosage, side effects, or interactions.', timestamp: new Date() },
-    ]);
+    const [messages, setMessages] = React.useState<ChatMessage[]>([]);
     const [inputValue, setInputValue] = React.useState('');
     const [isLoading, setIsLoading] = React.useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -80,12 +77,13 @@ const ChatbotPage: React.FC = () => {
             setContextLoading(true);
             setError(null);
             try {
-                // 1. Fetch the specific visit details including its prescriptions
+                // 1. Fetch the specific visit details including its prescriptions AND chat_history
                 const { data: visitData, error: visitError } = await supabase
                     .from('visits')
                     .select(`
                         *,
-                        prescriptions (*)
+                        prescriptions (*),
+                        chat_history 
                     `)
                     .eq('id', visitId)
                     .maybeSingle(); // Use maybeSingle in case ID is invalid
@@ -131,38 +129,36 @@ const ChatbotPage: React.FC = () => {
                 // Use keys for logging
                 console.log("Visit-specific context loaded:", { ...context, allergies: conditionsAndAllergies });
 
-                // === Fetch Chat History ===
-                console.log(`Fetching chat history for session: ${sessionId}`);
-                const { data: historyData, error: historyError } = await supabase
-                    .from('chat_messages')
-                    .select('id, sender, message_text, created_at')
-                    .eq('user_id', user.id) // Ensure it's the correct user
-                    .eq('session_id', sessionId) // Filter by session
-                    .order('created_at', { ascending: true }); // Order chronologically
-
-                if (historyError) {
-                    console.error("Error fetching chat history:", historyError);
-                    // Don't throw, maybe just log and proceed without history
+                // === Initialize Messages State from visitData.chat_history ===
+                let initialMessages: ChatMessage[] = [];
+                // Check if chat_history and chat_history.messages exist and is an array
+                if (visitData.chat_history && Array.isArray((visitData.chat_history as any).messages)) {
+                    try {
+                        // Attempt to parse the messages, ensuring timestamps are Dates
+                        initialMessages = ((visitData.chat_history as any).messages as any[]).map(msg => ({
+                            ...msg,
+                            timestamp: new Date(msg.timestamp) // Convert string timestamp back to Date object
+                        }));
+                        console.log(`Loaded ${initialMessages.length} messages from visit chat_history.`);
+                    } catch (parseError) {
+                        console.error("Error parsing chat history from DB:", parseError);
+                        setError("Failed to parse chat history.");
+                        // Fallback to initial message if parsing fails
+                        initialMessages = [
+                            { id: 'init-bot-parse-error', sender: 'bot', text: `Error loading chat history. How can I help with the visit (Reason: ${context.visitReason || 'N/A'})?`, timestamp: new Date() }
+                        ];
+                    }
                 }
 
-                // === Initialize Messages State ===
-                if (historyData && historyData.length > 0) {
-                    // Map fetched data to ChatMessage format
-                    const loadedMessages: ChatMessage[] = historyData.map(msg => ({
-                        id: msg.id,
-                        sender: msg.sender as 'user' | 'bot',
-                        text: msg.message_text,
-                        timestamp: new Date(msg.created_at)
-                    }));
-                    setMessages(loadedMessages);
-                    console.log(`Loaded ${loadedMessages.length} messages from history.`);
-                } else {
-                    // Update initial bot message to be visit specific if no history
-                    setMessages([
-                        { id: 'init-bot', sender: 'bot', text: `Hello! How can I help you understand this specific visit (Reason: ${context.visitReason || 'N/A'}) or the prescriptions issued?`, timestamp: new Date() },
-                    ]);
+                // If no messages were loaded (either null history or empty array), set the initial bot message
+                if (initialMessages.length === 0) {
+                    initialMessages = [
+                        { id: 'init-bot', sender: 'bot', text: `Hello! How can I help you understand this specific visit (Reason: ${context.visitReason || 'N/A'}) or the prescriptions issued?`, timestamp: new Date() }
+                    ];
+                    console.log("No chat history found or history was empty, setting initial bot message.");
                 }
-                // ============================
+                setMessages(initialMessages);
+                // =======================================================
 
             } catch (err: any) {
                 console.error("Error fetching chat context:", err);
@@ -176,13 +172,13 @@ const ChatbotPage: React.FC = () => {
         if (!authLoading) {
             fetchVisitAndChatHistory();
         }
-        // Depend on visitId, auth loading, user.id, and sessionId
-    }, [visitId, authLoading, user?.id, authProfile?.profileId, sessionId]);
+        // Depend on visitId, auth loading, and user.id
+    }, [visitId, authLoading, user?.id]);
 
     // Updated send message handler
     const handleSendMessage = async () => {
-        if (!inputValue.trim() || !chatContext || !user?.id) {
-            setError("Message is empty, user context not loaded, or chat context missing.");
+        if (!inputValue.trim() || !chatContext || !user?.id || !visitId) {
+            setError("Message is empty, user context not loaded, chat context missing, or visit ID invalid.");
             return;
         }
         if (!genAI || geminiInitializationError) {
@@ -191,41 +187,52 @@ const ChatbotPage: React.FC = () => {
         }
 
         const userMessage: ChatMessage = {
-            id: Date.now().toString() + '-user',
+            id: uuidv4() + '-user', // Use uuid for unique IDs
             sender: 'user',
             text: inputValue,
             timestamp: new Date(),
         };
-        // Add user message immediately to UI
-        setMessages(prev => [...prev, userMessage]);
+        // Store current input and clear
         const currentInput = inputValue;
         setInputValue('');
+
+        // Optimistically update UI state
+        const updatedMessages = [...messages, userMessage];
+        setMessages(updatedMessages);
         setIsLoading(true);
         setError(null);
 
-        try {
-            // === Save User Message to DB ===
-            const { error: userInsertError } = await supabase
-                .from('chat_messages')
-                .insert({
-                    user_id: user.id,
-                    session_id: sessionId,
-                    sender: 'user',
-                    message_text: currentInput // Use the stored input
-                });
-            if (userInsertError) {
-                console.error("Error saving user message:", userInsertError);
-                // Decide if we should stop or just log the error - Logging for now
+        // --- Function to update DB --- 
+        const updateChatHistoryInDB = async (newMessages: ChatMessage[]) => {
+            try {
+                const { error: updateError } = await supabase
+                    .from('visits')
+                    .update({ chat_history: { messages: newMessages } })
+                    .eq('id', visitId);
+                if (updateError) {
+                    console.error("Error updating chat history in DB:", updateError);
+                    // Optionally revert optimistic update or show error to user
+                    setError("Failed to save message history.");
+                }
+            } catch (dbError) {
+                console.error("Exception updating chat history:", dbError);
+                setError("Failed to save message history due to an exception.");
             }
-            // ==============================
+        };
+        // --- End DB Update Function --- 
 
-            // Construct history for the prompt
-            const history = messages.map(msg => ({
+        try {
+            // Save user message batch (immediately)
+            await updateChatHistoryInDB(updatedMessages);
+
+            // Construct history for the prompt (use the state `updatedMessages` which includes the user message)
+            const historyForPrompt = updatedMessages.map(msg => ({
                 role: msg.sender === 'user' ? 'user' : 'model',
                 parts: [{ text: msg.text }]
-            })).slice(-10);
+            })).slice(-10); // Get last 10 interactions
 
             const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            // *** Construct the prompt using currentInput ***
             const prompt = `
 You are Prescripto AI, a helpful assistant roleplaying for a hackathon demo. Your goal is to explain details about a specific medical visit and the prescriptions issued during it, based *only* on the context provided below. 
 Explain potential uses, common dosages, or general side effects if asked about a prescription listed in the context.
@@ -242,18 +249,18 @@ Visit Context (ID: ${visitId}):
 Chat History (if any):
 ...
 
-Latest User Question: ${currentInput}
+Latest User Question: ${currentInput} 
 
 Your Roleplay Response (in ${chatContext.preferredLanguage}, explaining visit/med details based *only* on the context above AND omitting any disclaimers):`;
 
             console.log("--- Sending to Gemini ---");
             console.log("Prompt Core:", currentInput);
             console.log("Context:", chatContext);
-            console.log("History Sent:", history);
+            console.log("History Sent (for prompt construction):", historyForPrompt);
             console.log("-------------------------");
 
-            const result = await model.generateContent({
-                contents: [...history, { role: "user", parts: [{ text: prompt }] }],
+            const result = await model.generateContent({ // Use generateContent, not generateContentStream
+                contents: [...historyForPrompt, { role: "user", parts: [{ text: prompt }] }],
             });
             const response = result.response;
 
@@ -265,39 +272,30 @@ Your Roleplay Response (in ${chatContext.preferredLanguage}, explaining visit/me
 
             const botResponseText = response.text();
             const botMessage: ChatMessage = {
-                id: Date.now().toString() + '-bot',
+                id: uuidv4() + '-bot', // Use uuid
                 sender: 'bot',
                 text: botResponseText,
                 timestamp: new Date(),
             };
-            // Add bot response to UI
-            setMessages(prev => [...prev, botMessage]);
 
-            // === Save Bot Message to DB ===
-            const { error: botInsertError } = await supabase
-                .from('chat_messages')
-                .insert({
-                    user_id: user.id, // Associate bot message with the user's session
-                    session_id: sessionId,
-                    sender: 'bot',
-                    message_text: botResponseText
-                });
-            if (botInsertError) {
-                console.error("Error saving bot message:", botInsertError);
-                // Log error, but don't necessarily block UI
-            }
-            // ==============================
+            // Update UI state with bot message
+            const finalMessages = [...updatedMessages, botMessage];
+            setMessages(finalMessages);
+
+            // Save bot message batch
+            await updateChatHistoryInDB(finalMessages);
 
         } catch (err: any) {
-            console.error("Error calling Gemini API:", err);
-            setError(`AI Error: ${err.message}`);
+            console.error("Error during message handling or Gemini API call:", err);
+            // Add error message to UI, but don't save it to DB history
             const errorMessage: ChatMessage = {
-                id: Date.now().toString() + '-error',
+                id: uuidv4() + '-error',
                 sender: 'bot',
-                text: `Sorry, I encountered an error. ${err.message}`,
+                text: `Sorry, I encountered an error processing your request. ${err.message}`,
                 timestamp: new Date(),
             };
-            setMessages(prev => [...prev, errorMessage]);
+            setMessages(prev => [...prev, errorMessage]); // Add error locally
+            // Do NOT call updateChatHistoryInDB here for the error message
         } finally {
             setIsLoading(false);
         }

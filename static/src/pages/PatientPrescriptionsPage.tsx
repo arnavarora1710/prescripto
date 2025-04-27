@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Prescription } from '../types/app';
 import { useAuth } from '../context/AuthContext';
-import { FaSpinner, FaArrowLeft, FaFilePrescription, FaUserMd, FaCalendarDay, FaAngleRight } from 'react-icons/fa';
+import { FaSpinner, FaArrowLeft, FaFilePrescription, FaUserMd, FaCalendarDay, FaAngleRight, FaBell } from 'react-icons/fa';
 import { useNavigate, Link } from 'react-router-dom';
 import { format } from 'date-fns';
+import ReminderModal from '../components/ReminderModal';
 
 const PatientPrescriptionsPage: React.FC = () => {
     const navigate = useNavigate();
@@ -13,6 +14,10 @@ const PatientPrescriptionsPage: React.FC = () => {
     const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
     const [loadingPageData, setLoadingPageData] = useState(true);
     const [errorPageData, setErrorPageData] = useState<string | null>(null);
+
+    // State for the reminder modal
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [selectedPrescriptionForModal, setSelectedPrescriptionForModal] = useState<Prescription | null>(null);
 
     // Get the basic profile from context for checks and ID
     const basicPatientProfile = authProfile?.role === 'patient' ? authProfile : null;
@@ -60,6 +65,18 @@ const PatientPrescriptionsPage: React.FC = () => {
         }
     }, [basicPatientProfile?.profileId, authLoading]);
 
+    // Function to open the modal
+    const handleOpenReminderModal = (prescription: Prescription) => {
+        setSelectedPrescriptionForModal(prescription);
+        setIsModalOpen(true);
+    };
+
+    // Function to close the modal
+    const handleCloseReminderModal = () => {
+        setIsModalOpen(false);
+        setSelectedPrescriptionForModal(null);
+    };
+
     // Render Logic
     return (
         <div className="container mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-12 text-off-white font-sans">
@@ -94,11 +111,11 @@ const PatientPrescriptionsPage: React.FC = () => {
                     {prescriptions.length > 0 ? (
                         <ul className="bg-dark-card border border-border-color rounded-xl shadow-lg divide-y divide-border-color/30">
                             {prescriptions.map((rx) => (
-                                <li key={rx.id}>
+                                <li key={rx.id} className="flex items-center justify-between p-3 sm:p-4 hover:bg-dark-input/50 transition duration-150 group">
                                     {rx.visit_id ? (
                                         <Link
                                             to={`/visit/${rx.visit_id}`}
-                                            className="flex items-center justify-between p-4 sm:p-5 hover:bg-dark-input/50 transition duration-150 group"
+                                            className="flex-grow flex items-center justify-between mr-4"
                                         >
                                             <div className="flex-grow mr-4">
                                                 <h2 className="font-semibold text-sm sm:text-base text-primary-accent flex items-center mb-1">
@@ -116,13 +133,23 @@ const PatientPrescriptionsPage: React.FC = () => {
                                                     </span>
                                                 </div>
                                             </div>
-                                            <FaAngleRight className="h-5 w-5 text-off-white/40 group-hover:text-primary-accent group-hover:translate-x-1 transition-all duration-200 flex-shrink-0" />
+                                            <FaAngleRight className="h-5 w-5 text-off-white/40 group-hover:text-primary-accent group-hover:translate-x-1 transition-all duration-200 flex-shrink-0 ml-auto" />
                                         </Link>
                                     ) : (
-                                        <div className="p-4 sm:p-5 text-off-white/50 italic">
-                                            Prescription: {rx.medication || 'Unnamed Prescription'} (Missing visit link)
+                                        <div className="flex-grow flex items-center justify-between mr-4 text-off-white/50 italic">
+                                            <span>{rx.medication || 'Unnamed Prescription'} (No visit link)</span>
                                         </div>
                                     )}
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenReminderModal(rx);
+                                        }}
+                                        className="ml-4 flex-shrink-0 p-2 rounded-full hover:bg-electric-blue/20 text-electric-blue/70 hover:text-electric-blue transition-colors duration-200"
+                                        title={`Set reminder for ${rx.medication}`}
+                                    >
+                                        <FaBell className="h-4 w-4" />
+                                    </button>
                                 </li>
                             ))}
                         </ul>
@@ -131,6 +158,13 @@ const PatientPrescriptionsPage: React.FC = () => {
                     )}
                 </div>
             )}
+
+            {/* Render the Modal */}
+            <ReminderModal
+                isOpen={isModalOpen}
+                onClose={handleCloseReminderModal}
+                prescription={selectedPrescriptionForModal}
+            />
         </div>
     );
 };

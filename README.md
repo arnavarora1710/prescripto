@@ -37,13 +37,7 @@
 - **Postgres + Supabase**: connection pooling, role-based access, seamless upgrades.
 - Plug-and-play for real insurance APIs & FHIR standards.
 
-### 5️⃣ Presentation & Documentation
-
-- **This README**: clear trailer, setup guide, judging criteria mapping, and roadmap.
-- **Detailed instructions** for local dev & deployment.
-- **In-context visuals** and code references.
-
-### 6️⃣ AI/ML Implementation
+### 5️⃣ AI/ML Implementation
 
 - **Dual Gemini integrations**: LLM prescription suggestion & LLM-guided copay extraction.
 - **Advanced prompt engineering**: allergy-safe, coverage-aware recommendations.
@@ -67,7 +61,7 @@
    cd static && npm run dev
    cd main && mvn spring-boot:run
    ```
-4. **Open in browser**: `http://localhost:5173`
+4. **Open in browser**: `http://localhost:8080`
 
 ---
 
@@ -76,9 +70,3 @@
 - **Mobile app**: React Native / Flutter support.
 - **HIPAA-compliant**: deploy with audit logging.
 - **Expand database**: add more drugs and formularies.
-
----
-
-## 🤝 Contributing & Support
-
-We welcome issues, feature requests, and pull requests! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.

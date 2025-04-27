@@ -41,7 +41,7 @@ steps:
     entrypoint: gcloud
     args: [
         'run', 'deploy', 'prescripto-service',
-        '--image=us-central1-docker.pkg.dev/$PROJECT_ID/prescripto-repo/prescripto-app:$SHORT_SHA',
+        '--image=us-central1-docker.pkg.dev/$PROJECT_ID/prescripto-repo/prescripto-app:latest',
         '--region=us-central1',
         '--project=$PROJECT_ID',
         '--quiet' # Suppress interactive prompts

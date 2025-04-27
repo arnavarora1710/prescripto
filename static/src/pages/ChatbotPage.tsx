@@ -187,16 +187,14 @@ const ChatbotPage: React.FC = () => {
         }
 
         const userMessage: ChatMessage = {
-            id: uuidv4() + '-user', // Use uuid for unique IDs
+            id: uuidv4() + '-user',
             sender: 'user',
             text: inputValue,
             timestamp: new Date(),
         };
-        // Store current input and clear
         const currentInput = inputValue;
         setInputValue('');
 
-        // Optimistically update UI state
         const updatedMessages = [...messages, userMessage];
         setMessages(updatedMessages);
         setIsLoading(true);
@@ -211,7 +209,6 @@ const ChatbotPage: React.FC = () => {
                     .eq('id', visitId);
                 if (updateError) {
                     console.error("Error updating chat history in DB:", updateError);
-                    // Optionally revert optimistic update or show error to user
                     setError("Failed to save message history.");
                 }
             } catch (dbError) {
@@ -222,19 +219,20 @@ const ChatbotPage: React.FC = () => {
         // --- End DB Update Function --- 
 
         try {
-            // Save user message batch (immediately)
+            // Save user message batch
             await updateChatHistoryInDB(updatedMessages);
 
-            // Construct history for the prompt (use the state `updatedMessages` which includes the user message)
-            const historyForPrompt = updatedMessages.map(msg => ({
+            // Construct history EXCLUDING the latest user message for the prompt context
+            const historyForPrompt = updatedMessages.slice(0, -1).map(msg => ({
                 role: msg.sender === 'user' ? 'user' : 'model',
                 parts: [{ text: msg.text }]
-            })).slice(-10); // Get last 10 interactions
+            })).slice(-10); // Limit history length
 
             const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-            // *** Construct the prompt using currentInput ***
-            const prompt = `
-You are Prescripto AI, a helpful assistant roleplaying for a hackathon demo. Your goal is to explain details about a specific medical visit and the prescriptions issued during it, based *only* on the context provided below. 
+
+            // *** Construct the FULL prompt including system instructions, context, AND the latest user input ***
+            const fullPrompt = `
+You are Prescripto AI, a helpful assistant roleplaying for a hackathon demo. Your goal is to explain details about a specific medical visit and the prescriptions issued during it, based *only* on the context provided below.
 Explain potential uses, common dosages, or general side effects if asked about a prescription listed in the context.
 **Crucially, DO NOT include any disclaimers** such as "This is general information only", "not personalized medical advice", or similar phrases. Assume the user understands this is a demo.
 If asked about something unrelated to this specific visit, politely state you can only discuss the provided visit details.
@@ -243,59 +241,57 @@ Respond clearly and concisely in the patient's preferred language: ${chatContext
 Visit Context (ID: ${visitId}):
 - Reason for Visit: ${chatContext.visitReason || 'N/A'}
 - Clinician Notes: ${chatContext.visitNotes || 'None recorded'}
-- Prescriptions from this Visit: ${chatContext.visitPrescriptions.length > 0 ? chatContext.visitPrescriptions.map(p => `${p.medication} (${p.dosage || 'N/A'}, ${p.frequency || 'N/A'})`).join('; ') : 'None'} 
+- Prescriptions from this Visit: ${chatContext.visitPrescriptions.length > 0 ? chatContext.visitPrescriptions.map(p => `${p.medication} (${p.dosage || 'N/A'}, ${p.frequency || 'N/A'})`).join('; ') : 'None'}
 - Patient Allergies: ${chatContext.allergies.length > 0 ? chatContext.allergies.join(', ') : 'None listed'}
 
-Chat History (if any):
-...
+Chat History Context (Recent Turns):
+${historyForPrompt.map(h => `${h.role === 'user' ? 'Patient' : 'AI Assistant'}: ${h.parts[0].text}`).join('\n')}
 
-Latest User Question: ${currentInput} 
+Latest User Question: ${currentInput}
 
 Your Roleplay Response (in ${chatContext.preferredLanguage}, explaining visit/med details based *only* on the context above AND omitting any disclaimers):`;
 
-            console.log("--- Sending to Gemini ---");
-            console.log("Prompt Core:", currentInput);
-            console.log("Context:", chatContext);
-            console.log("History Sent (for prompt construction):", historyForPrompt);
+            console.log("--- Sending to Gemini (using generateContent) ---");
+            console.log("Full Prompt Being Sent:\n", fullPrompt);
             console.log("-------------------------");
 
-            const result = await model.generateContent({ // Use generateContent, not generateContentStream
-                contents: [...historyForPrompt, { role: "user", parts: [{ text: prompt }] }],
-            });
+            // *** Use generateContent with the full prompt ***
+            const result = await model.generateContent(fullPrompt); // Pass the combined prompt directly
+
             const response = result.response;
 
+            // Add safety check
             if (!response || response.promptFeedback?.blockReason) {
                 const blockReason = response?.promptFeedback?.blockReason;
                 console.error('Gemini request blocked. Reason:', blockReason);
                 throw new Error(`AI response blocked due to safety settings (Reason: ${blockReason || 'Unknown'}).`);
             }
 
-            const botResponseText = response.text();
+            const botText = response.text();
+            const cleanedBotText = botText ? botText.replace(/\*/g, '') : 'Sorry, I encountered an issue processing that.';
+
             const botMessage: ChatMessage = {
-                id: uuidv4() + '-bot', // Use uuid
+                id: uuidv4() + '-bot',
                 sender: 'bot',
-                text: botResponseText,
+                text: cleanedBotText,
                 timestamp: new Date(),
             };
 
-            // Update UI state with bot message
             const finalMessages = [...updatedMessages, botMessage];
             setMessages(finalMessages);
 
-            // Save bot message batch
+            // Save final batch including bot message
             await updateChatHistoryInDB(finalMessages);
 
         } catch (err: any) {
             console.error("Error during message handling or Gemini API call:", err);
-            // Add error message to UI, but don't save it to DB history
             const errorMessage: ChatMessage = {
                 id: uuidv4() + '-error',
                 sender: 'bot',
                 text: `Sorry, I encountered an error processing your request. ${err.message}`,
                 timestamp: new Date(),
             };
-            setMessages(prev => [...prev, errorMessage]); // Add error locally
-            // Do NOT call updateChatHistoryInDB here for the error message
+            setMessages(prev => [...prev, errorMessage]);
         } finally {
             setIsLoading(false);
         }

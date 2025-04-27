@@ -25,6 +25,7 @@ interface FullVisitDetails extends Visit {
     prescriptions?: Prescription[];
     patients?: Patient;      // Changed from patient to patients to match potential join result
     clinicians?: Clinician;  // Changed from clinician to clinicians
+    drawing_image_url?: string | null; // Add the drawing image URL property
 }
 
 const VisitDetailPage: React.FC = () => {
@@ -105,6 +106,8 @@ const VisitDetailPage: React.FC = () => {
         const doc = new jsPDF();
         const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
         const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
+        const margin = 15;
+        const maxLineWidth = pageWidth - margin * 2;
         let currentY = 15; // Start position
 
         // --- Header ---
@@ -116,43 +119,100 @@ const VisitDetailPage: React.FC = () => {
         // --- Visit Info ---
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
-        doc.text("Visit Details", 15, currentY);
+        doc.text("Visit Details", margin, currentY);
         currentY += 6;
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
-        doc.text(`Date: ${format(new Date(visit.visit_date), 'PPPp')}`, 15, currentY);
+        doc.text(`Date: ${format(new Date(visit.visit_date), 'PPPp')}`, margin, currentY);
         currentY += 5;
-        doc.text(`Patient: ${visit.patients?.username || 'N/A'}`, 15, currentY);
+        const patientName = visit.patients?.username || 'N/A'; // Extract for filename too
+        doc.text(`Patient: ${patientName}`, margin, currentY);
         currentY += 5;
-        doc.text(`Clinician: ${visit.clinicians?.username || 'N/A'}`, 15, currentY);
+        doc.text(`Clinician: ${visit.clinicians?.username || 'N/A'}`, margin, currentY);
         currentY += 5;
-        const reasonLines = doc.splitTextToSize(`Reason: ${visit.reason || 'N/A'}`, pageWidth - 30); // Use full width minus margins
-        doc.text(reasonLines, 15, currentY);
-        currentY += (reasonLines.length * 4) + 5; // Adjust Y based on number of lines for reason
+        const reasonLines = doc.splitTextToSize(`Reason: ${visit.reason || 'N/A'}`, maxLineWidth);
+        doc.text(reasonLines, margin, currentY);
+        currentY += (reasonLines.length * 4) + 5;
 
 
         // --- Visit Notes ---
         if (visit.notes) {
             doc.setFontSize(12);
             doc.setFont('helvetica', 'bold');
-            doc.text("Visit Notes", 15, currentY);
+            doc.text("Visit Notes", margin, currentY);
             currentY += 6;
-            doc.setFontSize(9); // Smaller font for notes
+            doc.setFontSize(9);
             doc.setFont('helvetica', 'normal');
-            const notesLines = doc.splitTextToSize(visit.notes, pageWidth - 30);
-            // Add a box around notes for clarity
-            doc.setDrawColor(200); // Light grey border
-            doc.rect(14, currentY - 3, pageWidth - 28, (notesLines.length * 3.5) + 5); // x, y, width, height
-            doc.text(notesLines, 15, currentY);
-            currentY += (notesLines.length * 3.5) + 8; // Adjust Y + padding
+            const cleanedNotes = visit.notes.replace(/\*/g, '');
+            const notesLines = doc.splitTextToSize(cleanedNotes, maxLineWidth);
+            doc.setDrawColor(200);
+            doc.rect(margin - 1, currentY - 3, maxLineWidth + 2, (notesLines.length * 3.5) + 5);
+            doc.text(notesLines, margin, currentY);
+            currentY += (notesLines.length * 3.5) + 8;
         }
+
+        // --- Add Drawing Image ---
+        if (visit.drawing_image_url && typeof visit.drawing_image_url === 'string' && visit.drawing_image_url.startsWith('data:image')) {
+            try {
+                currentY += 5; // Add space before drawing
+                doc.setFontSize(12);
+                doc.setFont('helvetica', 'bold');
+                doc.text("Associated Drawing", margin, currentY);
+                currentY += 6;
+
+                const imageData = visit.drawing_image_url;
+                const imageProps = doc.getImageProperties(imageData);
+
+                // Calculate image dimensions to fit page width
+                const imgWidth = imageProps.width;
+                const imgHeight = imageProps.height;
+                const aspectRatio = imgWidth / imgHeight;
+                let pdfImgWidth = maxLineWidth;
+                let pdfImgHeight = pdfImgWidth / aspectRatio;
+
+                // Check if height exceeds remaining page space (basic check)
+                const remainingSpace = pageHeight - currentY - 20; // Leave margin at bottom
+                if (pdfImgHeight > remainingSpace) {
+                    pdfImgHeight = remainingSpace;
+                    pdfImgWidth = pdfImgHeight * aspectRatio;
+                    // Center smaller image if width is now less than maxLineWidth
+                    if (pdfImgWidth < maxLineWidth) {
+                        // margin = (pageWidth - pdfImgWidth) / 2; // Re-center
+                    }
+                }
+                // Center the image horizontally
+                const imageX = (pageWidth - pdfImgWidth) / 2;
+
+
+                doc.addImage(imageData, imageProps.fileType, imageX, currentY, pdfImgWidth, pdfImgHeight);
+                currentY += pdfImgHeight + 8; // Move Y below image + padding
+
+            } catch (imgError) {
+                console.error("Error adding drawing image to PDF:", imgError);
+                doc.setFontSize(9);
+                doc.setTextColor(255, 0, 0); // Red color for error
+                doc.text("Error embedding drawing image.", margin, currentY);
+                doc.setTextColor(0); // Reset text color
+                currentY += 5;
+            }
+        }
+        // --- End Add Drawing Image ---
+
 
         // --- Prescriptions Table ---
         if (visit.prescriptions && visit.prescriptions.length > 0) {
-            currentY += 5; // Add some space before the table
+            // Check if table needs a new page
+            const tableHeaderHeight = 10; // Approximate height of header
+            const tableRowHeight = 8 * visit.prescriptions.length; // Rough estimate
+            if (currentY + tableHeaderHeight + tableRowHeight > pageHeight - 20) {
+                doc.addPage();
+                currentY = 15; // Reset Y for new page
+            }
+
+            currentY += 5;
             doc.setFontSize(12);
             doc.setFont('helvetica', 'bold');
-            doc.text("Prescriptions Issued", 15, currentY);
+            doc.text("Prescriptions Issued", margin, currentY);
             currentY += 6;
 
             autoTable(doc, {
@@ -165,30 +225,37 @@ const VisitDetailPage: React.FC = () => {
                     rx.notes || 'N/A'
                 ]),
                 theme: 'grid',
-                headStyles: { fillColor: [60, 70, 90] }, // Dark blue-gray header
+                headStyles: { fillColor: [60, 70, 90] },
                 styles: { fontSize: 9, cellPadding: 2 },
                 columnStyles: {
-                    3: { cellWidth: 'auto' } // Allow Notes column to wrap
+                    3: { cellWidth: 'auto' }
                 },
-                margin: { left: 15, right: 15 },
+                margin: { left: margin, right: margin },
                 didDrawPage: (data) => {
-                    currentY = data.cursor?.y || currentY; // Update Y position after table
+                    currentY = data.cursor?.y || currentY; // Update Y position
                 }
             });
-            currentY += 5; // Space after table
+            // autoTable updates currentY via the hook
+            currentY += 5;
         } else {
+            if (currentY + 15 > pageHeight - 20) { // Check space before adding text
+                doc.addPage();
+                currentY = 15;
+            }
             doc.setFontSize(10);
             doc.setFont('helvetica', 'italic');
-            doc.text("No prescriptions were issued during this visit.", 15, currentY);
+            doc.text("No prescriptions were issued during this visit.", margin, currentY);
             currentY += 10;
         }
 
-        // --- Footer ---
+        // --- Footer (ensure it's drawn on the last page) ---
+        const finalPageNum = (doc as any).internal.getNumberOfPages(); // Access internal property
+        doc.setPage(finalPageNum); // Go to the last page
         const footerY = pageHeight - 10;
         doc.setFontSize(8);
         doc.setTextColor(150);
-        doc.text(`Generated on ${format(new Date(), 'PPP')} | Visit ID: ${visit.id}`, 15, footerY);
-        doc.text("Prescripto Visit Summary", pageWidth - 15, footerY, { align: 'right' });
+        doc.text(`Generated on ${format(new Date(), 'PPP')} | Visit ID: ${visit.id}`, margin, footerY);
+        doc.text(`Prescripto Visit Summary`, pageWidth - margin, footerY, { align: 'right' }); // Fixed typo
 
 
         doc.save(`Visit_Summary_${patientName.replace(/\s+/g, '_')}_${format(new Date(visit.visit_date), 'yyyyMMdd')}.pdf`);

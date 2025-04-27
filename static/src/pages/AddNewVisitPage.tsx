@@ -249,8 +249,10 @@ const AddNewVisitPage: React.FC = () => {
             const text = response.text();
 
             console.log("LLM Transcription Result:", text);
+            // --- Add asterisk removal here ---
+            const cleanedText = text ? text.replace(/\*/g, '') : '';
             // Append transcription to existing notes or set if notes are empty
-            setVisitNotes(prev => prev ? `${prev}\n\n--- Transcribed Notes from Drawing ---\n${text}` : text);
+            setVisitNotes(prev => prev ? `${prev}\n\n--- Transcribed Notes from Drawing ---\n${cleanedText}` : cleanedText);
             setDrawingError(null);
 
         } catch (error: any) {
@@ -270,6 +272,11 @@ const AddNewVisitPage: React.FC = () => {
         const recommendations: Recommendation[] = [];
         const chunks = generatedText.split(RECOMMENDATION_DELIMITER);
 
+        // Function to remove asterisks
+        const stripAsterisks = (text: string | undefined | null): string => {
+            return text ? text.replace(/\*/g, '').trim() : '';
+        };
+
         for (const chunk of chunks) {
             const trimmedChunk = chunk.trim();
             if (!trimmedChunk) continue; // Skip empty chunks
@@ -280,16 +287,16 @@ const AddNewVisitPage: React.FC = () => {
             const frequencyMatch = trimmedChunk.match(/Frequency:\s*(.*)/i);
             const notesMatch = trimmedChunk.match(/(?:LLM )?Notes:\s*(.*)/is); // Allow "LLM Notes:" or "Notes:"
 
-            const medication = medicationMatch?.[1]?.trim();
+            const medication = stripAsterisks(medicationMatch?.[1]);
 
             // Only add if a medication name was found in the chunk
             if (medication) {
                 recommendations.push({
                     id: `rec-${uuidv4()}`, // Use uuid for a more robust unique id
                     medicationName: medication,
-                    dosage: dosageMatch?.[1]?.trim() || 'N/A',
-                    frequency: frequencyMatch?.[1]?.trim() || 'N/A',
-                    llmNotes: notesMatch?.[1]?.trim() || 'N/A',
+                    dosage: stripAsterisks(dosageMatch?.[1]) || 'N/A',
+                    frequency: stripAsterisks(frequencyMatch?.[1]) || 'N/A',
+                    llmNotes: stripAsterisks(notesMatch?.[1]) || 'N/A',
                     status: 'pending',
                     clinicianComment: '',
                     validationIssue: undefined
@@ -297,7 +304,7 @@ const AddNewVisitPage: React.FC = () => {
             }
         }
 
-        console.log("Parsed Recommendations:", recommendations);
+        console.log("Parsed Recommendations (Asterisks Removed):", recommendations);
         return recommendations;
     };
 
@@ -645,6 +652,16 @@ ${RECOMMENDATION_DELIMITER}
     };
 
     const handleRegenerate = useCallback(async () => {
+        // Keep existing approved/pending recommendations
+        const existingApprovedPending = recommendations.filter(rec => rec.status !== 'rejected');
+        const rejectedRecommendations = recommendations.filter(rec => rec.status === 'rejected');
+        const numberOfNewSuggestionsNeeded = rejectedRecommendations.length;
+
+        if (numberOfNewSuggestionsNeeded === 0) {
+            alert("No recommendations were marked as rejected for regeneration.");
+            return;
+        }
+
         if (!visitNotes || !selectedPatient || !fullPatientDataForVisit) {
             setErrorPrescription("Cannot regenerate: Missing visit notes, patient selection, or patient context.");
             return;
@@ -656,15 +673,17 @@ ${RECOMMENDATION_DELIMITER}
         setFinalizeError(null);
         setIsValidated(false);
         setCanFinalize(false);
-        // Clear old recommendations visually *before* fetching new ones
-        // setRecommendations([]); // Decide if you want this, or keep old ones until new arrive
 
-        const rejectedRecommendationsText = recommendations
-            .filter(rec => rec.status === 'rejected')
+        const rejectedRecommendationsText = rejectedRecommendations
             .map(rec => `- ${rec.medicationName}: Reason: ${rec.clinicianComment || 'No reason provided'}`)
             .join('\n');
 
-        const patientData = fullPatientDataForVisit; // Already fetched and in state
+        // Include names of approved/pending to avoid duplication
+        const existingNonRejectedNames = existingApprovedPending
+            .map(rec => rec.medicationName)
+            .join(', ');
+
+        const patientData = fullPatientDataForVisit;
 
         const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
         if (!apiKey) {
@@ -675,39 +694,52 @@ ${RECOMMENDATION_DELIMITER}
         const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
 
         const regenerationPrompt = `
-Clinician requesting *new* prescription recommendations for patient: ${selectedPatient.username} (ID: ${selectedPatient.id}).
+Task: Generate *replacement* prescription recommendations for a clinical visit simulation.
 
-Previously Rejected Recommendations (Do NOT suggest these again for the listed reasons):
-${rejectedRecommendationsText || 'None'}
+**Important:** This is a roleplay simulation for a hackathon project.
 
-Original Visit Context:
+Context:
+Patient: ${selectedPatient.username} (ID: ${selectedPatient.id})
 Visit Reason: ${visitReason}
 Clinician Notes: ${visitNotes}
-Allergies: ${patientAllergiesList.join(', ')}
-Current Medications: ${currentPrescriptionsList.map(p => p.medicationName).join(', ')}
+Allergies: ${patientAllergiesList.join(', ') || 'None listed'}
+Current Medications: ${currentPrescriptionsList.map(p => p.medicationName).join(', ') || 'None listed'}
 Relevant Medical History: ${JSON.stringify(patientData.medical_history || '{}').substring(0, 100)}...
 
-Suggest up to 3 *new* and *distinct* prescription options appropriate for the original visit reason and clinician notes, considering the patient context and avoiding the rejected options above. For each new option, provide:
+Previously Rejected Recommendations (Do NOT suggest these again):
+${rejectedRecommendationsText || 'None'}
+
+Existing Approved/Pending Recommendations (Also avoid suggesting duplicates of these):
+${existingNonRejectedNames || 'None'}
+
+Instructions:
+Suggest exactly **${numberOfNewSuggestionsNeeded}** *new* and *distinct* prescription options to replace the rejected ones.
+These new options must be appropriate for the original Visit Reason and Clinician Notes, considering the patient context.
+They must be different from *both* the rejected list *and* the existing approved/pending list.
+For each new option, provide:
 1. Medication Name
 2. Dosage
 3. Frequency
-4. Brief Notes/Rationale
+4. Brief Notes/Rationale (max 20 words)
 
-Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
+Output Format:
+Respond ONLY with the ${numberOfNewSuggestionsNeeded} new recommendations, strictly following the format below, separated by "${RECOMMENDATION_DELIMITER}". Do not include any introductory, concluding, or refusal text.
+Medication Name: [Name]
+Dosage: [Dosage]
+Frequency: [Frequency]
+LLM Notes: [Rationale]
+${RECOMMENDATION_DELIMITER}
+... (exactly ${numberOfNewSuggestionsNeeded} times)
 `;
 
         try {
-            console.log("Calling Gemini API for regeneration...");
+            console.log("Calling Gemini API for REPLACEMENT recommendations...");
             console.log("Regeneration Prompt:", regenerationPrompt);
 
             const geminiResponse = await fetch(geminiApiUrl, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: regenerationPrompt }] }],
-                }),
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: regenerationPrompt }] }] }),
             });
 
             if (!geminiResponse.ok) {
@@ -720,25 +752,31 @@ Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
             if (!generatedText) throw new Error("Gemini regeneration response did not contain text.");
 
             console.log("Gemini Regenerated Text:", generatedText);
-            const parsedRecs = parseLlmRecommendations(generatedText);
+            const newParsedRecs = parseLlmRecommendations(generatedText);
 
-            if (parsedRecs.length > 0) {
-                setRecommendations(parsedRecs); // Replace old recommendations
-                setSuccessMessage("New recommendations generated.");
+            if (newParsedRecs.length > 0) {
+                // **Merge** new recommendations with existing approved/pending ones
+                setRecommendations([...existingApprovedPending, ...newParsedRecs]);
+                setSuccessMessage("New recommendations generated to replace rejected ones.");
                 setCanRegenerate(false); // Hide regenerate button until another rejection
             } else {
-                setErrorPrescription("AI could not generate new recommendations based on the constraints.");
-                // Keep canRegenerate true so user can try again or modify rejection notes
+                setErrorPrescription("AI could not generate suitable replacements based on the constraints.");
+                // Keep existing approved/pending, user might need to manually adjust or change rejections
+                setRecommendations(existingApprovedPending);
+                // Keep canRegenerate true? Or false? Maybe false is better to avoid loop.
+                setCanRegenerate(false);
             }
 
         } catch (error: any) {
             console.error("Error regenerating recommendations:", error);
             setErrorPrescription(`Regeneration Failed: ${error.message}`);
-            // Keep canRegenerate true so user can try again
+            // Keep existing state, allow user to try again maybe?
+            setRecommendations(existingApprovedPending); // Revert to only approved/pending
+            setCanRegenerate(true); // Allow retry
         } finally {
             setLoadingRegenerate(false);
         }
-    }, [visitReason, visitNotes, selectedPatient, recommendations, patientAllergiesList, currentPrescriptionsList, fullPatientDataForVisit]);
+    }, [visitReason, visitNotes, selectedPatient, recommendations, patientAllergiesList, currentPrescriptionsList, fullPatientDataForVisit, parseLlmRecommendations]); // Added parseLlmRecommendations dependency
 
     // Subscribe to Supabase channel for drawing updates
     const listenForDrawingUpdates = useCallback((channelId: string) => {

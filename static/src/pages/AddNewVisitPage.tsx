@@ -1166,17 +1166,33 @@ ${RECOMMENDATION_DELIMITER}
                             <p className="text-sm text-off-white/70 mb-5">
                                 Scan the QR code with another device (like a tablet) to open the drawing canvas. Notes will appear here automatically.
                             </p>
-                            <div className="flex justify-center mb-5 p-4 bg-white rounded-lg inline-block shadow-lg">
+                            {/* Container for QR code and Link */}
+                            <div className="flex flex-col items-center gap-3">
+                                <div className="p-4 bg-white rounded-lg inline-block shadow-lg">
+                                    {drawingChannelId && (
+                                        <QRCode
+                                            value={`https://prescripto-service-961908516332.us-central1.run.app/draw/${drawingChannelId}`} // URL for QR code
+                                            size={180}
+                                            level="M" // Error correction level
+                                        />
+                                    )}
+                                </div>
+                                {/* Display the URL text as a clickable link */}
                                 {drawingChannelId && (
-                                    <QRCode
-                                        value={`https://prescripto-service-961908516332.us-central1.run.app/draw/${drawingChannelId}`} // Using Spring Boot port 8080 instead of Vite port 5173
-                                        size={180}
-                                        level="M" // Error correction level
-                                    />
+                                    <a
+                                        href={`https://prescripto-service-961908516332.us-central1.run.app/draw/${drawingChannelId}`}
+                                        target="_blank" // Open in new tab
+                                        rel="noopener noreferrer" // Security measure
+                                        className="block text-xs text-pastel-blue hover:text-electric-blue hover:underline mt-1 break-all transition-colors duration-150"
+                                        title="Open drawing page in new tab"
+                                    >
+                                        Open Drawing Link: <span className="font-mono">{`.../draw/${drawingChannelId.substring(0, 8)}...`}</span>
+                                    </a>
                                 )}
                             </div>
+
                             {isListeningForDrawing && (
-                                <div className="flex items-center justify-center text-sm text-pastel-blue py-2 animate-pulse mt-2">
+                                <div className="flex items-center justify-center text-sm text-pastel-blue py-2 animate-pulse mt-4"> {/* Added mt-4 */}
                                     <FaSpinner className="animate-spin h-4 w-4 mr-2" />
                                     <span>Waiting for notes from tablet...</span>
                                 </div>
@@ -1186,7 +1202,7 @@ ${RECOMMENDATION_DELIMITER}
                             )}
                             <button
                                 onClick={handleCancelDrawing}
-                                className="mt-4 px-4 py-2 border border-red-500/70 text-red-400 rounded-md shadow-sm text-sm font-medium bg-transparent hover:bg-red-500/10 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-card focus:ring-red-500 transition duration-200 ease-in-out"
+                                className="mt-5 px-4 py-2 border border-red-500/70 text-red-400 rounded-md shadow-sm text-sm font-medium bg-transparent hover:bg-red-500/10 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-card focus:ring-red-500 transition duration-200 ease-in-out" // Added mt-5
                             >
                                 Cancel Drawing Sync
                             </button>

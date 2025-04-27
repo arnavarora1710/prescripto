@@ -19,7 +19,6 @@ steps:
     dir: 'static' # Run npm build in the static directory
     id: 'npm-build'
     waitFor: ['npm-install'] # Wait for install to finish
-    secretEnv: ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY', 'VITE_GEMINI_API_KEY']
 
   # 2. Build the Docker image
   # The image will be tagged with the commit SHA and 'latest'
@@ -37,7 +36,7 @@ steps:
   # 3. Push the Docker image (both tags) to Artifact Registry
   # This is implicitly handled by listing the tags in the 'images' section below
 
-  # 4. Deploy to Cloud Run
+  # 4. Deploy to Cloud Run, setting runtime secrets and env vars
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args: [
@@ -45,6 +44,8 @@ steps:
         '--image=us-central1-docker.pkg.dev/$PROJECT_ID/prescripto-repo/prescripto-app:latest',
         '--region=us-central1',
         '--project=$PROJECT_ID',
+        '--set-secrets=SUPABASE_DB_PWD=projects/$PROJECT_ID/secrets/SUPABASE_DB_PWD:latest,GEMINI_API_KEY=projects/$PROJECT_ID/secrets/GEMINI_API_KEY:latest',
+        '--set-env-vars=SUPABASE_HOST=aws-0-us-east-2.pooler.supabase.com,SUPABASE_DB_USER=postgres.wdrgzmbfnzoobhjxcudx,DISABLE_VISION_API=false',
         '--quiet' # Suppress interactive prompts
       ]
     id: 'cloudrun-deploy'
@@ -61,12 +62,3 @@ options:
   machineType: 'N1_HIGHCPU_8' # Use a faster machine type if needed
   # default timeout is 10 minutes
   # timeout: '1200s' # Example: 20 minutes
-
-availableSecrets:
-  secretManager:
-    - env: 'VITE_SUPABASE_URL'
-      versionName: projects/$PROJECT_ID/secrets/VITE_SUPABASE_URL/versions/latest
-    - env: 'VITE_SUPABASE_ANON_KEY'
-      versionName: projects/$PROJECT_ID/secrets/VITE_SUPABASE_ANON_KEY/versions/latest
-    - env: 'VITE_GEMINI_API_KEY'
-      versionName: projects/$PROJECT_ID/secrets/VITE_GEMINI_API_KEY/versions/latest

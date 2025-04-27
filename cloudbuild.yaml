@@ -61,3 +61,11 @@ options:
   machineType: 'N1_HIGHCPU_8' # Use a faster machine type if needed
   # default timeout is 10 minutes
   # timeout: '1200s' # Example: 20 minutes
+
+# Define the secrets to be made available to the build steps
+secrets:
+- kmsKeyName: projects/$PROJECT_ID/locations/global/keyRings/cloudbuild/cryptoKeys/cloudbuild-key # Replace if using a different KMS key
+  secretEnv:
+    VITE_SUPABASE_URL: projects/$PROJECT_ID/secrets/VITE_SUPABASE_URL/versions/latest
+    VITE_SUPABASE_ANON_KEY: projects/$PROJECT_ID/secrets/VITE_SUPABASE_ANON_KEY/versions/latest
+    VITE_GEMINI_API_KEY: projects/$PROJECT_ID/secrets/VITE_GEMINI_API_KEY/versions/latest

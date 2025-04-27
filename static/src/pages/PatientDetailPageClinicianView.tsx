@@ -1,10 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
-import { Patient, Visit, Prescription } from '../types/app';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import { FaArrowLeft, FaUser, FaHeartbeat, FaNotesMedical, FaCalendarAlt, FaUserMd, FaEdit, FaSave, FaTimes, FaFileDownload, FaSpinner, FaRegCommentDots, FaFilePrescription, FaStickyNote, FaPills, FaAngleRight } from 'react-icons/fa';
+import { Patient, Visit } from '../types/app';
+import { FaArrowLeft, FaUser, FaHeartbeat, FaNotesMedical, FaCalendarAlt, FaSpinner, FaRegCommentDots, FaFilePrescription, FaAngleRight } from 'react-icons/fa';
 import { format, formatDistanceToNow } from 'date-fns';
 
 // Define the structure expected from the RPC call (Updated Visit)
@@ -15,9 +13,6 @@ interface VisitWithDetails extends Visit {
 const PatientDetailPageClinicianView: React.FC = () => {
   const { patientId } = useParams<{ patientId: string }>();
   const navigate = useNavigate();
-  const [editingVisitId, setEditingVisitId] = useState<string | null>(null);
-  const [editNotes, setEditNotes] = useState<string>('');
-  const [isSavingNotes, setIsSavingNotes] = useState(false);
 
   const [patient, setPatient] = useState<Patient | null>(null);
   const [visits, setVisits] = useState<VisitWithDetails[]>([]);
@@ -70,138 +65,6 @@ const PatientDetailPageClinicianView: React.FC = () => {
     fetchData();
 
   }, [patientId]);
-
-  // --- PDF Generation Function ---
-  const generatePrescriptionPdf = (prescription: Prescription, visit: Visit) => {
-    if (!patient) {
-      console.error("Patient data is not loaded, cannot generate PDF.");
-      alert("Error: Patient data not available.");
-      return;
-    }
-
-    const doc = new jsPDF();
-    const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
-    const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
-    let currentY = 15; // Start position
-
-    // --- Header ---
-    doc.setFontSize(18);
-    doc.setFont('helvetica', 'bold');
-    doc.text("Prescription", pageWidth / 2, currentY, { align: 'center' });
-    currentY += 10;
-
-    // --- Patient & Clinician Info ---
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    const patientInfoX = 15;
-    const clinicianInfoX = pageWidth / 2 + 10;
-    const infoStartY = currentY;
-
-    doc.setFont('helvetica', 'bold');
-    doc.text("Patient:", patientInfoX, currentY);
-    doc.setFont('helvetica', 'normal');
-    currentY += 5;
-    doc.text(`Name: ${patient.username || 'N/A'}`, patientInfoX, currentY);
-
-    currentY = infoStartY; // Reset Y for clinician info
-    doc.setFont('helvetica', 'bold');
-    doc.text("Prescriber:", clinicianInfoX, currentY);
-    doc.setFont('helvetica', 'normal');
-    currentY += 5;
-    doc.text(`Name: ${visit.clinicians?.username || 'N/A'}`, clinicianInfoX, currentY);
-    currentY += 5;
-    doc.text(`Date: ${new Date(prescription.created_at).toLocaleDateString()}`, clinicianInfoX, currentY);
-
-    currentY = Math.max(currentY, infoStartY + 15); // Adjusted Y ensure Y is below the info block
-    currentY += 5;
-    doc.setLineWidth(0.2);
-    doc.line(15, currentY, pageWidth - 15, currentY); // Divider line
-    currentY += 10;
-
-    // --- Prescription Details Table ---
-    autoTable(doc, {
-      startY: currentY,
-      head: [['Medication', 'Dosage', 'Frequency']],
-      body: [
-        [
-          prescription.medication || 'N/A',
-          prescription.dosage || 'N/A',
-          prescription.frequency || 'N/A',
-        ],
-      ],
-      theme: 'grid',
-      headStyles: { fillColor: [60, 70, 90] }, // Dark blue-gray header
-      styles: { fontSize: 10, cellPadding: 2 },
-      margin: { left: 15, right: 15 },
-      didDrawPage: (data) => {
-        currentY = data.cursor?.y || currentY; // Update Y position after table
-      }
-    });
-
-    currentY += 10;
-
-    // --- Notes ---
-    if (prescription.notes) {
-      doc.setFont('helvetica', 'bold');
-      doc.text("Notes:", 15, currentY);
-      currentY += 5;
-      doc.setFont('helvetica', 'normal');
-      const notesLines = doc.splitTextToSize(prescription.notes, pageWidth - 30);
-      doc.text(notesLines, 15, currentY);
-      currentY += notesLines.length * 4; // Adjust Y based on number of lines
-    }
-
-    currentY += 15;
-
-    // --- Footer / Signature Line ---
-    const signatureY = pageHeight - 30; // Position near bottom
-    doc.line(clinicianInfoX, signatureY, pageWidth - 15, signatureY);
-    doc.setFontSize(9);
-    doc.text("Prescriber Signature", clinicianInfoX, signatureY + 4);
-
-    doc.save(`Prescription_${patient.username || 'Patient'}_${new Date(prescription.created_at).toISOString().split('T')[0]}.pdf`);
-  };
-  // --- End PDF Generation Function ---
-
-  // --- Edit Notes Logic ---
-  const handleEditClick = (visit: Visit) => {
-    setError(null);
-    setEditingVisitId(visit.id);
-    setEditNotes(visit.notes || '');
-  };
-
-  const handleSaveNotes = async (visitId: string) => {
-    if (!patientId) return;
-    setIsSavingNotes(true);
-    setError(null);
-    try {
-      console.log(`Saving notes for visit ${visitId}`);
-      const { error: updateError } = await supabase
-        .from('visits')
-        .update({ notes: editNotes })
-        .eq('id', visitId);
-
-      if (updateError) throw updateError;
-
-      // Update local state
-      setVisits(prevVisits =>
-        prevVisits.map(v => v.id === visitId ? { ...v, notes: editNotes } : v)
-      );
-      setEditingVisitId(null); // Exit edit mode
-      console.log('Notes updated successfully!'); // Keep console log for feedback
-    } catch (err: any) {
-      console.error("Error updating visit notes:", err);
-      setError("Failed to save notes: " + err.message);
-    } finally {
-      setIsSavingNotes(false);
-    }
-  };
-
-  const handleCancelEdit = () => {
-    setEditingVisitId(null);
-    setEditNotes('');
-  };
-  // --- End Edit Notes Logic ---
 
   if (loading) {
     return <div className="container mx-auto px-4 py-16 text-center text-white"><FaSpinner className="animate-spin inline-block mr-3 h-6 w-6 text-primary-accent" /> Loading patient details...</div>;

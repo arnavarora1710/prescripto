@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Visit } from '../types/app';
 import { useAuth } from '../context/AuthContext';
-import { FaSpinner, FaArrowLeft, FaCalendarAlt, FaUserMd, FaNotesMedical, FaRegCommentDots, FaAngleRight } from 'react-icons/fa';
+import { FaSpinner, FaArrowLeft, FaCalendarAlt, FaUserMd, FaRegCommentDots, FaAngleRight } from 'react-icons/fa';
 import { useNavigate, Link } from 'react-router-dom';
 import { format } from 'date-fns';
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Patient, JSONValue } from '../types/app';
 import { useAuth } from '../context/AuthContext';
-import { FaUserCircle, FaPlus, FaCamera, FaSpinner, FaEdit, FaCheckCircle, FaExclamationTriangle, FaFileMedicalAlt, FaCalendarCheck, FaSave, FaTimes, FaFileImage, FaUserEdit, FaHistory, FaShieldAlt, FaTrash } from 'react-icons/fa';
+import { FaUserCircle, FaPlus, FaCamera, FaSpinner, FaEdit, FaCheckCircle, FaExclamationTriangle, FaFileMedicalAlt, FaCalendarCheck, FaSave, FaTimes, FaFileImage, FaUserEdit, FaHistory, FaShieldAlt, FaTrash, FaLanguage } from 'react-icons/fa';
 import Webcam from 'react-webcam';
 import { useNavigate } from 'react-router-dom';
 
@@ -64,6 +64,10 @@ const PatientProfilePage: React.FC = () => {
   const [updatingInsurance, setUpdatingInsurance] = useState(false);
   const [insuranceUpdateError, setInsuranceUpdateError] = useState<string | null>(null);
   const [isEditingInsurance, setIsEditingInsurance] = useState(false); // <-- State for Edit Mode
+  // New state for language preference
+  const [preferredLanguage, setPreferredLanguage] = useState<string>('en'); // Default to English
+  const [updatingLanguage, setUpdatingLanguage] = useState(false);
+  const [languageUpdateError, setLanguageUpdateError] = useState<string | null>(null);
 
   const insuranceFileInputRef = useRef<HTMLInputElement>(null);
   const webcamRef = useRef<Webcam>(null); // <-- Ref for webcam
@@ -210,6 +214,10 @@ const PatientProfilePage: React.FC = () => {
           // Set ONLY the patient data
           console.log("Patient Data:", patientData);
           setFullPatientData(patientData); // Set the full patient data
+          // Set initial language preference from fetched data
+          if (patientData.preferred_language) { // Assuming column name is preferred_language
+            setPreferredLanguage(patientData.preferred_language);
+          }
 
         } catch (err: any) {
           console.error("Error fetching patient page data:", err);
@@ -493,6 +501,43 @@ const PatientProfilePage: React.FC = () => {
   };
   // --- End Handle Save Insurance ---
 
+  // --- Function to handle saving language preference ---
+  const handleSaveLanguage = async () => {
+    if (!fullPatientData?.id) {
+      setLanguageUpdateError("Cannot update language: Patient data not fully loaded.");
+      return;
+    }
+    setUpdatingLanguage(true);
+    setLanguageUpdateError(null);
+    setSuccessMessage(null);
+
+    try {
+      const { data: updatedPatient, error: updateError } = await supabase
+        .from('patients')
+        .update({ preferred_language: preferredLanguage })
+        .eq('id', fullPatientData.id)
+        .select('preferred_language') // Select only the updated field to confirm
+        .single();
+
+      if (updateError) throw updateError;
+      if (!updatedPatient) throw new Error("Update successful but no patient data returned.");
+
+      // Update local state (already updated via setPreferredLanguage)
+      // Optionally update fullPatientData if needed elsewhere
+      setFullPatientData(prev => prev ? { ...prev, preferred_language: preferredLanguage } : null);
+
+      setSuccessMessage(`Language preference updated to ${preferredLanguage === 'en' ? 'English' : preferredLanguage}.`);
+      setTimeout(() => setSuccessMessage(null), 3000);
+
+    } catch (err: any) {
+      console.error("Error updating language preference:", err);
+      setLanguageUpdateError(`Failed to save language: ${err.message}`);
+    } finally {
+      setUpdatingLanguage(false);
+    }
+  };
+  // --- End Language Save Function ---
+
   // --- Helper function to handle saving and exiting edit mode ---
   const handleSaveInsuranceAndExitEditMode = async () => {
     await handleSaveInsurance();
@@ -621,7 +666,7 @@ const PatientProfilePage: React.FC = () => {
   // --- End Camera Handling ---
 
   if (loading) {
-    return <div className="container mx-auto px-4 py-16 text-center text-white"><FaSpinner className="animate-spin inline-block mr-3 h-6 w-6 text-pastel-blue" /> Loading patient data...</div>;
+    return <div className="container mx-auto px-4 py-16 text-center text-white"><FaSpinner className="animate-spin inline-block mr-3 h-6 w-6 text-primary-accent" /> Loading patient data...</div>;
   }
 
   if (error) {
@@ -635,7 +680,7 @@ const PatientProfilePage: React.FC = () => {
         <p className="text-off-white/70 mb-6">No patient data found for this profile, or you may not be logged in as a patient.</p>
         <button
           onClick={() => navigate('/login')}
-          className="px-6 py-2 border border-electric-blue text-electric-blue rounded-md hover:bg-electric-blue hover:text-dark-bg transition duration-200">
+          className="px-6 py-2 border border-primary-accent text-primary-accent rounded-md hover:bg-primary-accent hover:text-dark-bg transition duration-200 active:scale-95">
           Go to Login
         </button>
       </div>
@@ -693,13 +738,13 @@ const PatientProfilePage: React.FC = () => {
         {/* --- Left Column (Profile Card & Actions) --- */}
         <div className="md:col-span-1 space-y-8">
           {/* Profile Card */}
-          <div className="bg-dark-card p-6 rounded-xl shadow-lg border border-border-color flex flex-col items-center text-center animate-fade-in transition-shadow duration-300 hover:shadow-pastel-glow-sm">
+          <div className="bg-dark-card p-6 rounded-xl shadow-lg border border-border-color flex flex-col items-center text-center animate-fade-in transition-shadow duration-300 hover:shadow-primary-glow-sm">
             {/* Profile Picture & Change Button */}
             <div className="flex-shrink-0 mb-4 relative group w-32 h-32">
               {authProfile?.profilePictureUrl ? (
-                <img src={authProfile.profilePictureUrl} alt="Profile" className="w-full h-full rounded-full object-cover border-4 border-pastel-lavender shadow-md transition-transform duration-300 group-hover:scale-105" />
+                <img src={authProfile.profilePictureUrl} alt="Profile" className="w-full h-full rounded-full object-cover border-4 border-primary-accent shadow-md transition-transform duration-300 group-hover:scale-105" />
               ) : (
-                <div className="w-full h-full rounded-full bg-dark-input flex items-center justify-center border-4 border-border-color text-off-white/30 transition-colors duration-300 group-hover:border-pastel-lavender"><FaUserCircle className="h-20 w-20" /></div>
+                <div className="w-full h-full rounded-full bg-dark-input flex items-center justify-center border-4 border-border-color text-off-white/30 transition-colors duration-300 group-hover:border-primary-accent"><FaUserCircle className="h-20 w-20" /></div>
               )}
               <label className="absolute inset-0 flex items-center justify-center bg-black/70 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 cursor-pointer">
                 <div className="text-center">
@@ -720,15 +765,15 @@ const PatientProfilePage: React.FC = () => {
             <div className="w-full flex flex-col gap-3">
               <button
                 onClick={() => navigate('/patient/prescriptions')}
-                className="w-full group flex items-center justify-center px-4 py-2.5 border border-electric-blue/60 text-electric-blue rounded-md hover:bg-electric-blue/10 hover:border-electric-blue transition duration-200 text-sm font-medium whitespace-nowrap"
+                className="w-full group flex items-center justify-center px-4 py-2.5 border border-primary-accent/70 text-primary-accent rounded-md hover:bg-primary-accent/10 hover:border-primary-accent transition duration-200 text-sm font-medium whitespace-nowrap active:scale-95"
               >
-                <FaFileMedicalAlt className="mr-2 h-4 w-4 transition-colors duration-200 group-hover:text-electric-blue" /> View Prescriptions
+                <FaFileMedicalAlt className="mr-2 h-4 w-4 transition-colors duration-200 group-hover:text-primary-accent" /> View Prescriptions
               </button>
               <button
                 onClick={() => navigate('/patient/visits')}
-                className="w-full group flex items-center justify-center px-4 py-2.5 border border-pastel-lavender/60 text-pastel-lavender rounded-md hover:bg-pastel-lavender/10 hover:border-pastel-lavender transition duration-200 text-sm font-medium whitespace-nowrap"
+                className="w-full group flex items-center justify-center px-4 py-2.5 border border-pastel-blue/60 text-pastel-blue rounded-md hover:bg-pastel-blue/10 hover:border-pastel-blue transition duration-200 text-sm font-medium whitespace-nowrap active:scale-95"
               >
-                <FaCalendarCheck className="mr-2 h-4 w-4 transition-colors duration-200 group-hover:text-pastel-lavender" /> View Visits
+                <FaCalendarCheck className="mr-2 h-4 w-4 transition-colors duration-200 group-hover:text-pastel-blue" /> View Visits
               </button>
             </div>
           </div>
@@ -740,7 +785,7 @@ const PatientProfilePage: React.FC = () => {
           <div className="bg-dark-card p-6 sm:p-8 rounded-xl shadow-lg border border-border-color animate-fade-in" style={{ animationDelay: '0.1s' }}>
             <div className="flex items-center justify-between mb-6 pb-3 border-b border-border-color">
               <h2 className="text-xl sm:text-2xl font-semibold text-white flex items-center">
-                <FaHistory className="mr-3 text-pastel-lavender" /> Medical History & Allergies
+                <FaHistory className="mr-3 text-primary-accent" /> Medical History & Allergies
               </h2>
             </div>
 
@@ -776,7 +821,7 @@ const PatientProfilePage: React.FC = () => {
 
             {/* Add/Update History Form */}
             <div className="mt-6 pt-6 border-t border-border-color/50">
-              <h3 className="text-md font-semibold text-pastel-lavender mb-3">Add / Update History Item</h3>
+              <h3 className="text-md font-semibold text-primary-accent mb-3">Add / Update History Item</h3>
               <div className="p-4 bg-dark-input/30 border border-border-color/30 rounded-lg space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <input
@@ -785,7 +830,7 @@ const PatientProfilePage: React.FC = () => {
                     value={allergyNameInput}
                     onChange={(e) => setAllergyNameInput(e.target.value)}
                     placeholder="Item Name (e.g., Penicillin Allergy)"
-                    className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-electric-blue focus:ring-1 focus:ring-electric-blue text-sm transition duration-150 placeholder:text-off-white/50"
+                    className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-primary-accent focus:ring-1 focus:ring-primary-accent text-sm transition duration-150 placeholder:text-off-white/50"
                     disabled={updatingHistory}
                   />
                   <input
@@ -794,7 +839,7 @@ const PatientProfilePage: React.FC = () => {
                     value={allergyDescInput}
                     onChange={(e) => setAllergyDescInput(e.target.value)}
                     placeholder="Description/Details (Optional)"
-                    className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-electric-blue focus:ring-1 focus:ring-electric-blue text-sm transition duration-150 placeholder:text-off-white/50"
+                    className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-primary-accent focus:ring-1 focus:ring-primary-accent text-sm transition duration-150 placeholder:text-off-white/50"
                     disabled={updatingHistory}
                   />
                 </div>
@@ -802,7 +847,7 @@ const PatientProfilePage: React.FC = () => {
                   <button
                     onClick={handleAddUpdateHistoryItem}
                     disabled={updatingHistory || !allergyNameInput.trim()}
-                    className="flex items-center justify-center px-4 py-2 min-w-[130px] bg-electric-blue/80 hover:bg-electric-blue text-dark-bg rounded-md text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition duration-150 shadow active:scale-95"
+                    className="flex items-center justify-center px-4 py-2 min-w-[130px] bg-primary-accent/80 hover:bg-primary-accent text-dark-bg rounded-md text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition duration-150 shadow active:scale-95"
                   >
                     {updatingHistory ? <FaSpinner className="animate-spin mr-2 h-4 w-4" /> : <FaPlus className="mr-1.5 h-4 w-4" />} Add / Update
                   </button>
@@ -828,7 +873,7 @@ const PatientProfilePage: React.FC = () => {
                     setInsuranceUpdateError(null);
                     setIsEditingInsurance(true);
                   }}
-                  className="flex items-center text-sm text-pastel-blue hover:text-electric-blue disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 p-1 rounded"
+                  className="flex items-center text-sm text-pastel-blue hover:text-primary-accent disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 p-1 rounded"
                   disabled={updatingInsurance || geminiLoading || !!geminiInitializationError}
                   title="Edit Insurance Details"
                 >
@@ -874,7 +919,7 @@ const PatientProfilePage: React.FC = () => {
                     value={insuranceProvider}
                     onChange={(e) => setInsuranceProvider(e.target.value)}
                     placeholder="Insurance Company Name"
-                    className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-electric-blue focus:ring-1 focus:ring-electric-blue text-sm transition duration-150"
+                    className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-primary-accent focus:ring-1 focus:ring-primary-accent text-sm transition duration-150"
                     disabled={updatingInsurance}
                   />
                 </div>
@@ -887,7 +932,7 @@ const PatientProfilePage: React.FC = () => {
                       value={policyNumber}
                       onChange={(e) => setPolicyNumber(e.target.value)}
                       placeholder="Policy or Member ID"
-                      className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-electric-blue focus:ring-1 focus:ring-electric-blue text-sm transition duration-150"
+                      className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-primary-accent focus:ring-1 focus:ring-primary-accent text-sm transition duration-150"
                       disabled={updatingInsurance}
                     />
                   </div>
@@ -899,7 +944,7 @@ const PatientProfilePage: React.FC = () => {
                       value={groupNumber}
                       onChange={(e) => setGroupNumber(e.target.value)}
                       placeholder="Group Number"
-                      className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-electric-blue focus:ring-1 focus:ring-electric-blue text-sm transition duration-150"
+                      className="w-full px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-primary-accent focus:ring-1 focus:ring-primary-accent text-sm transition duration-150"
                       disabled={updatingInsurance}
                     />
                   </div>
@@ -911,14 +956,14 @@ const PatientProfilePage: React.FC = () => {
                   <button
                     onClick={() => setIsEditingInsurance(false)}
                     disabled={updatingInsurance}
-                    className="flex items-center justify-center px-4 py-2 min-w-[100px] bg-gray-600 hover:bg-gray-700 text-white rounded-md text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition duration-150 shadow"
+                    className="flex items-center justify-center px-4 py-2 min-w-[100px] bg-dark-input hover:bg-border-color/50 text-off-white/80 rounded-md text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition duration-150 shadow active:scale-95"
                   >
                     <FaTimes className="mr-1.5 h-4 w-4" /> Cancel
                   </button>
                   <button
                     onClick={handleSaveInsuranceAndExitEditMode}
                     disabled={updatingInsurance || !insuranceProvider.trim() || !policyNumber.trim()}
-                    className="flex items-center justify-center px-4 py-2 min-w-[120px] bg-pastel-blue/80 hover:bg-pastel-blue text-dark-bg rounded-md text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition duration-150 shadow"
+                    className="flex items-center justify-center px-4 py-2 min-w-[120px] bg-primary-accent/80 hover:bg-primary-accent text-dark-bg rounded-md text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition duration-150 shadow active:scale-95"
                   >
                     {updatingInsurance ? <FaSpinner className="animate-spin mr-2 h-4 w-4" /> : <FaSave className="mr-1.5 h-4 w-4" />} Save Changes
                   </button>
@@ -928,7 +973,7 @@ const PatientProfilePage: React.FC = () => {
 
             {/* --- OCR Section --- */}
             <div className="mt-6 pt-6 border-t border-border-color/50">
-              <h3 className="text-md font-semibold text-pastel-lavender/90 mb-3">Scan Card / Upload Image</h3>
+              <h3 className="text-md font-semibold text-pastel-blue/90 mb-3">Scan Card / Upload Image</h3>
               {/* Gemini Warning */}
               {geminiInitializationError && (
                 <p className="text-orange-400 text-xs mb-3 flex items-center">
@@ -937,10 +982,10 @@ const PatientProfilePage: React.FC = () => {
               )}
               {/* Camera View */}
               {showCamera && (
-                <div className="fixed inset-0 bg-black/80 flex flex-col items-center justify-center z-50 p-4 animate-fade-in">
-                  <Webcam audio={false} ref={webcamRef} screenshotFormat="image/jpeg" width={640} height={480} videoConstraints={{ width: 1280, height: 720, facingMode: facingMode }} className="rounded-lg border-4 border-electric-blue mb-4 max-w-full h-auto shadow-lg" />
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center z-50 p-4 animate-fade-in">
+                  <Webcam audio={false} ref={webcamRef} screenshotFormat="image/jpeg" width={640} height={480} videoConstraints={{ width: 1280, height: 720, facingMode: facingMode }} className="rounded-lg border-4 border-primary-accent mb-4 max-w-full h-auto shadow-lg" />
                   <div className="flex space-x-4">
-                    <button onClick={handleCapture} className="px-6 py-3 bg-electric-blue text-white rounded-lg font-semibold text-lg shadow hover:bg-electric-blue/90 transition">Capture Photo</button>
+                    <button onClick={handleCapture} className="px-6 py-3 bg-primary-accent text-dark-bg rounded-lg font-semibold text-lg shadow hover:bg-primary-accent/90 transition active:scale-95">Capture Photo</button>
                     <button onClick={handleCloseCamera} className="px-4 py-2 bg-gray-600 text-white rounded-lg shadow hover:bg-gray-700 transition">Cancel</button>
                   </div>
                 </div>
@@ -959,8 +1004,8 @@ const PatientProfilePage: React.FC = () => {
               )}
               {/* OCR Status/Result */}
               <div className="min-h-[20px]">
-                {ocrLoading && <p className="text-sm text-pastel-blue mb-2 flex items-center animate-pulse"><FaSpinner className="animate-spin mr-2" /> Processing OCR...</p>}
-                {geminiLoading && <p className="text-sm text-pastel-blue mb-2 flex items-center animate-pulse"><FaSpinner className="animate-spin mr-2" /> Analyzing text with AI...</p>}
+                {ocrLoading && <p className="text-sm text-pastel-blue/90 mb-2 flex items-center animate-pulse"><FaSpinner className="animate-spin mr-2" /> Processing OCR...</p>}
+                {geminiLoading && <p className="text-sm text-pastel-blue/90 mb-2 flex items-center animate-pulse"><FaSpinner className="animate-spin mr-2" /> Analyzing text with AI...</p>}
               </div>
               {ocrResultText && !isEditingInsurance && (
                 <div className="mt-4">
@@ -970,12 +1015,44 @@ const PatientProfilePage: React.FC = () => {
                     readOnly
                     value={ocrResultText}
                     rows={5}
-                    className="w-full px-3 py-2 rounded-lg bg-dark-input border border-border-color/70 text-off-white/90 text-xs font-mono focus:ring-1 focus:ring-electric-blue focus:border-electric-blue opacity-80"
+                    className="w-full px-3 py-2 rounded-lg bg-dark-input border border-border-color/70 text-off-white/90 text-xs font-mono focus:ring-1 focus:ring-primary-accent focus:border-primary-accent opacity-80"
                   />
                 </div>
               )}
             </div>{/* End OCR Section */}
           </div>{/* End Insurance Details Card */}
+
+          {/* Language Preference Card */}
+          <div className="bg-dark-card p-6 rounded-xl shadow-lg border border-border-color animate-fade-in" style={{ animationDelay: '0.1s' }}>
+            <h2 className="text-lg font-semibold text-white mb-4 flex items-center">
+              <FaLanguage className="mr-2 text-pastel-peach" /> Language Preference
+            </h2>
+            <p className="text-xs text-off-white/60 mb-3">Select the language for AI-generated summaries and chat.</p>
+            <div className="flex items-center space-x-4">
+              <select
+                id="languageSelect"
+                value={preferredLanguage}
+                onChange={(e) => setPreferredLanguage(e.target.value)}
+                className="flex-grow px-3 py-2 rounded-md bg-dark-input border border-border-color/70 focus:border-primary-accent focus:ring-1 focus:ring-primary-accent text-sm transition duration-150"
+                disabled={updatingLanguage}
+              >
+                <option value="en">English</option>
+                <option value="es">Español (Spanish)</option>
+                {/* Add other languages as needed */}
+                {/* <option value="fr">Français (French)</option> */}
+              </select>
+              <button
+                onClick={handleSaveLanguage}
+                disabled={updatingLanguage || (fullPatientData && fullPatientData.preferred_language === preferredLanguage)}
+                className="flex items-center justify-center px-4 py-2 min-w-[90px] bg-pastel-peach/80 hover:bg-pastel-peach text-dark-bg rounded-md text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition duration-150 shadow active:scale-95"
+              >
+                {updatingLanguage ? <FaSpinner className="animate-spin h-4 w-4" /> : <FaSave className="h-4 w-4" />}
+              </button>
+            </div>
+            {languageUpdateError && (
+              <p className="text-red-400 text-xs pt-2">Error: {languageUpdateError}</p>
+            )}
+          </div>
         </div>{/* End Right Column */}
       </div>{/* End Main Content Grid */}
     </div>

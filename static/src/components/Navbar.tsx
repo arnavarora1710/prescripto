@@ -1,8 +1,8 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { FaLaptopMedical, FaUserCircle, FaSignInAlt, FaHeartbeat, FaSignOutAlt } from 'react-icons/fa'; // Import FaLaptopMedical, FaUserCircle, and FaSignInAlt icons
-import { Link, useNavigate } from 'react-router-dom'; // Import Link and useNavigate
-import { useAuth } from '../context/AuthContext'; // Import useAuth hook
+import { FaUserCircle, FaSignInAlt, FaHeartbeat, FaSignOutAlt } from 'react-icons/fa';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 // Logo Icon - Removed animate-pulse
 const LogoIcon = () => (

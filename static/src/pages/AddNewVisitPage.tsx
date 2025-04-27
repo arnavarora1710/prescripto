@@ -377,6 +377,7 @@ Visit Reason: ${visitReason}
 Clinician Notes: ${visitNotes}
 Patient Information:
   - Allergies: ${JSON.stringify(patientData.medical_history || '{}').substring(0, 150) || 'None listed'}
+  - Current Medications: ${currentPrescriptionsList.map(p => p.medicationName).join(', ') || 'None listed'}
   - Insurance Plan Formulary (Coverage Data - Use this for recommendations if possible):
     ${insuranceCoverage ? JSON.stringify(insuranceCoverage, null, 2) : 'Patient has no insurance plan data available.'} 
 

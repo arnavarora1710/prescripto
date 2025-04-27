@@ -19,6 +19,7 @@ steps:
     dir: 'static' # Run npm build in the static directory
     id: 'npm-build'
     waitFor: ['npm-install'] # Wait for install to finish
+    secretEnv: ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY', 'VITE_GEMINI_API_KEY']
 
   # 2. Build the Docker image
   # The image will be tagged with the commit SHA and 'latest'

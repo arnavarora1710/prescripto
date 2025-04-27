@@ -186,14 +186,6 @@ const ClinicianDashboardPage: React.FC = () => {
             <FaPlus className="mr-2 h-4 w-4 group-hover:rotate-90 transition-transform duration-200" />
             New Visit
           </button>
-          <button
-            onClick={() => { /* TODO: Implement logout */ alert('Logout functionality not yet implemented in context.'); }}
-            className="flex items-center px-4 py-2 border border-border-color text-off-white/70 rounded-md hover:bg-dark-card hover:text-red-400 hover:border-red-500/50 transition duration-150 text-sm group"
-            title="Logout"
-          >
-            <FaEdit className="mr-2 h-4 w-4 transition-colors duration-150" />
-            Logout
-          </button>
         </div>
       </div>
 

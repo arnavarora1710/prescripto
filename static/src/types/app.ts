@@ -7,6 +7,7 @@ export interface Patient {
     medical_history: JSONValue | null;
     insurance_details: JSONValue | null;
     profile_picture_url?: string | null;
+    preferred_language?: string | null;
 }
 
 // Define the structure for Clinician data

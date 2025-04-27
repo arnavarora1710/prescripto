@@ -15,6 +15,7 @@ import PatientVisitsPage from './pages/PatientVisitsPage';
 import { AuthProvider } from './context/AuthContext';
 import './App.css'; // Keep App.css for potential global overrides if needed
 import VisitDetailPage from './pages/VisitDetailPage';
+import ChatbotPage from './pages/ChatbotPage';
 
 // Removed Placeholder Login Page Component
 
@@ -50,6 +51,7 @@ function App() {
               element={<AddNewVisitPage />}
             />
             <Route path="/visit/:visitId" element={<VisitDetailPage />} />
+            <Route path="/visit/:visitId/chat" element={<ChatbotPage />} />
           </Routes>
         </main>
         <Footer />

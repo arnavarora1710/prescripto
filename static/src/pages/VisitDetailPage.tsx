@@ -3,11 +3,22 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { Visit, Prescription, Patient, Clinician } from '../types/app'; // Import necessary types
 import { useAuth } from '../context/AuthContext'; // To check user role if needed
-import { FaSpinner, FaArrowLeft, FaCalendarAlt, FaUserMd, FaNotesMedical, FaRegCommentDots, FaFilePrescription, FaPills, FaStickyNote, FaUserCircle, FaFileDownload } from 'react-icons/fa';
+
+// Combined Icons from both branches
+import { 
+    FaSpinner, FaArrowLeft, FaCalendarAlt, FaUserMd, FaNotesMedical, 
+    FaRegCommentDots, FaFilePrescription, FaPills, FaStickyNote, 
+    FaUserCircle, FaFileDownload, FaBell, FaRobot 
+} from 'react-icons/fa';
+
 import { format } from 'date-fns';
-// Import PDF generation libraries
+
+// Import PDF generation libraries (from HEAD)
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+
+// Import Reminder Modal component (from incoming)
+import ReminderModal from '../components/ReminderModal';
 
 // Define a type for the full visit details expected from the database/RPC
 interface FullVisitDetails extends Visit {
@@ -24,6 +35,22 @@ const VisitDetailPage: React.FC = () => {
     const [visit, setVisit] = useState<FullVisitDetails | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    // === State for Reminder Modal ===
+    const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
+    const [selectedPrescriptionForReminder, setSelectedPrescriptionForReminder] = useState<Prescription | null>(null);
+
+    // === Functions to handle modal ===
+    const handleOpenReminderModal = (prescription: Prescription) => {
+        setSelectedPrescriptionForReminder(prescription);
+        setIsReminderModalOpen(true);
+    };
+
+    const handleCloseReminderModal = () => {
+        setIsReminderModalOpen(false);
+        setSelectedPrescriptionForReminder(null); // Clear selection on close
+    };
+    // === End Modal Handling ===
 
     useEffect(() => {
         if (!visitId) {
@@ -261,6 +288,17 @@ const VisitDetailPage: React.FC = () => {
                     )}
                 </div>
 
+                {/* === Chatbot Link Section === */}
+                <div className="mt-6 mb-6 pt-6 border-t border-border-color/40">
+                    <button
+                        onClick={() => navigate(`/visit/${visitId}/chat`)} // Link to visit-specific chat
+                        className="w-full group flex items-center justify-center px-4 py-2.5 border border-pastel-mint/60 text-pastel-mint rounded-md hover:bg-pastel-mint/10 hover:border-pastel-mint transition duration-200 text-sm font-medium whitespace-nowrap active:scale-95"
+                    >
+                        <FaRobot className="mr-2 h-4 w-4 transition-colors duration-200 group-hover:text-pastel-mint" /> Ask AI About This Visit
+                    </button>
+                    <p className="text-xs text-center mt-2 text-off-white/50">Get explanations about notes or prescriptions from this visit.</p>
+                </div>
+
                 {/* Prescriptions Section (if any) */}
                 {visit.prescriptions && visit.prescriptions.length > 0 && (
                     <div className="pt-6 border-t border-border-color/40">
@@ -271,10 +309,22 @@ const VisitDetailPage: React.FC = () => {
                         <ul className="space-y-4">
                             {visit.prescriptions.map((rx) => (
                                 <li key={rx.id} className="bg-dark-input/60 p-4 rounded-lg border border-border-color/50 shadow-sm">
-                                    <p className="font-semibold text-base text-off-white mb-1.5 flex items-center">
-                                        <FaPills className="mr-2 h-4 w-4 text-pastel-blue/70" />
-                                        {rx.medication}
-                                    </p>
+                                    {/* Prescription Header (Medication & Reminder Button) */}
+                                    <div className="flex justify-between items-center mb-2">
+                                        <p className="font-semibold text-base text-off-white flex items-center">
+                                            <FaPills className="mr-2 h-4 w-4 text-pastel-blue/70" />
+                                            {rx.medication}
+                                        </p>
+                                        {/* === Updated Reminder Button === */}
+                                        <button
+                                            onClick={() => handleOpenReminderModal(rx)} // Open modal with current rx
+                                            className="p-1.5 text-off-white/50 hover:text-pastel-peach hover:bg-pastel-peach/10 rounded-full transition-colors duration-150"
+                                            title="Set reminder for this medication"
+                                        >
+                                            <FaBell className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                    {/* Prescription Details */}
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs pl-6 text-off-white/80 mb-2">
                                         <span><span className="font-medium text-off-white/90">Dosage:</span> {rx.dosage || 'N/A'}</span>
                                         <span><span className="font-medium text-off-white/90">Frequency:</span> {rx.frequency || 'N/A'}</span>
@@ -295,6 +345,13 @@ const VisitDetailPage: React.FC = () => {
                     </div>
                 )}
             </div>
+
+            {/* === Render Reminder Modal === */}
+            <ReminderModal
+                isOpen={isReminderModalOpen}
+                onClose={handleCloseReminderModal}
+                prescription={selectedPrescriptionForReminder}
+            />
         </div>
     );
 };

@@ -4,7 +4,7 @@
 
 <p align="center">
   <video controls loop muted width="720">
-    <source src="./static/public/trailer.mp4" type="video/mp4" />
+    <source src="static/public/trailer.mp4" type="video/mp4" />
     🎬 Your browser does not support embedded videos.
   </video>
 </p>

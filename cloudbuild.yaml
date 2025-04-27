@@ -1,11 +1,12 @@
 steps:
   # 1. Install frontend dependencies and build static assets
-  - name: 'gcr.io/cloud-builders/npm'
-    args: ['install', '--legacy-peer-deps']
+  # Use Node.js 20 LTS builder
+  - name: 'gcr.io/cloud-builders/npm:node-20'
+    args: ['install'] # Removed --legacy-peer-deps for now
     dir: 'static' # Run npm install in the static directory
     id: 'npm-install'
 
-  - name: 'gcr.io/cloud-builders/npm'
+  - name: 'gcr.io/cloud-builders/npm:node-20'
     args: ['run', 'build']
     dir: 'static' # Run npm build in the static directory
     id: 'npm-build'

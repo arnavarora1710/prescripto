@@ -100,7 +100,6 @@ const VisitDetailPage: React.FC = () => {
 
     // --- PDF Generation Function ---
     const generateVisitPdf = async () => {
-        // Ensure all required data is loaded
         if (!visit || !visit.patients || !visit.clinicians) {
             alert("Visit, patient, or clinician data is not fully loaded. Cannot generate PDF.");
             return;
@@ -109,153 +108,139 @@ const VisitDetailPage: React.FC = () => {
         setIsGeneratingPdf(true); // Start loading state
 
         const doc = new jsPDF();
-        const margin = 10;
-        let yPos = margin + 10; // Initial Y position
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const margin = 15; // Slightly larger margin
+        const contentWidth = pageWidth - 2 * margin;
+        let yPos = 0; // Start Y position from top
+
+        // --- Theme Colors (Approximated from Tailwind config) ---
+        // Remove unused colors
+        // const electricBlue = [0, 255, 255]; // electric-blue approx RGB
+        // const darkBg = [10, 10, 10]; // dark-bg approx RGB
+        // const offWhite = [224, 224, 224]; // off-white approx RGB
+        // Explicitly type headerColor as a tuple
+        const headerColor: [number, number, number] = [0, 100, 150]; // Darker blue for header text
 
         // --- Helper to add text and update yPos ---
         const addText = (text: string | string[], x: number, y: number, options?: any): number => {
             doc.text(text, x, y, options);
-            // Estimate height added by text (crude approximation)
             const lines = Array.isArray(text) ? text.length : 1;
-            const fontSize = doc.getFontSize();
-            // Adjust multiplier as needed based on line spacing etc.
-            return y + lines * (fontSize / 2.8); // jsPDF uses points, approx 2.8 pts/mm
+            const fontSize = options?.fontSize || doc.getFontSize(); // Use provided size or current
+            return y + lines * (fontSize / 2.8) + 1; // Add a little extra line spacing
         };
 
-        // --- NEW: Parse Copay Info from Notes --- 
+        // --- PDF Header Bar --- 
+        doc.setFillColor(headerColor[0], headerColor[1], headerColor[2]); // Use dark blue
+        doc.rect(0, 0, pageWidth, 20, 'F'); // Filled rectangle for header
+        doc.setFontSize(16);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(255, 255, 255); // White text
+        doc.text("Visit Summary", margin, 13); // Position text within header
+        yPos = 25; // Start content below header
+
+        // --- Reset colors ---
+        doc.setTextColor(0, 0, 0); // Black text for body
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+
+        // --- Parse Copay Info --- 
         let extractedCopays: string[] = [];
         let totalCopay = 0;
-        let copayErrors = 0; // Track errors during parsing
-
+        let copayErrors = 0;
         (visit.prescriptions || []).forEach(rx => {
-            let copayInfo = "N/A"; // Default
+            let copayInfo = "N/A";
             if (rx.notes) {
-                // Regex to find the embedded copay info
                 const match = rx.notes.match(/\|\|\s*COPAY_INFO:\s*(.*?)\s*\|\|/);
                 if (match && match[1]) {
                     const potentialCopay = match[1].trim();
-                    // Validate the extracted value
-                    if (!isNaN(parseFloat(potentialCopay)) || potentialCopay === "Not Covered" || potentialCopay === "N/A" || potentialCopay === "Error") {
+                    if (!isNaN(parseFloat(potentialCopay)) || ["Not Covered", "N/A", "Error"].includes(potentialCopay)) {
                         copayInfo = potentialCopay;
-                    } else {
-                        console.warn(`Found embedded COPAY_INFO but value was unexpected: "${potentialCopay}" in notes for ${rx.medication}. Defaulting to N/A.`);
-                        copayInfo = "N/A"; // Default if format is wrong
-                    }
-                } else {
-                    // If delimiter not found, maybe it wasn't added? Default to N/A
-                    console.warn(`COPAY_INFO delimiter not found in notes for ${rx.medication}. Defaulting to N/A.`);
-                    copayInfo = "N/A";
-                }
-            } else {
-                copayInfo = "N/A"; // No notes, so N/A
-            }
+                    } else { copayInfo = "N/A"; }
+                } else { copayInfo = "N/A"; }
+            } else { copayInfo = "N/A"; }
             extractedCopays.push(copayInfo);
-
-            // Calculate total, tracking errors
-            if (!isNaN(parseFloat(copayInfo))) {
-                totalCopay += parseFloat(copayInfo);
-            } else if (copayInfo === "Error") {
-                copayErrors++;
-            }
+            if (!isNaN(parseFloat(copayInfo))) { totalCopay += parseFloat(copayInfo); }
+            else if (copayInfo === "Error") { copayErrors++; }
         });
-        // --- End Copay Parsing ---
 
-        // --- PDF Header --- 
-        doc.setFontSize(18);
+        // --- Estimated Copay Banner --- 
+        doc.setFillColor(230, 245, 255); // Lighter blue background
+        doc.setDrawColor(180, 210, 240); // Border color for banner
+        doc.setLineWidth(0.3);
+        doc.rect(margin, yPos, contentWidth, 10, 'FD'); // Fill and stroke rectangle
+        doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
-        yPos = addText('Visit Summary', margin, yPos);
-        yPos += 5; // Add some space after the title
-
-        // --- Estimated Copay Rectangle --- 
-        const rectX = margin;
-        const rectY = yPos;
-        const rectWidth = doc.internal.pageSize.getWidth() - 2 * margin;
-        const rectHeight = 12; // Adjust height as needed
-        const borderRadius = 3;
-
-        doc.setFillColor(220, 255, 220); // Light green background
-        doc.roundedRect(rectX, rectY, rectWidth, rectHeight, borderRadius, borderRadius, 'F'); // 'F' for fill
-
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(0, 100, 0); // Dark green text
-
+        doc.setTextColor(50, 70, 90); // Darker text for contrast
         let copayText = `Estimated Total Patient Copay: $${totalCopay.toFixed(2)}`;
-        if (copayErrors > 0) {
-            copayText += ` (${copayErrors} item(s) could not be analyzed)`;
-        } else {
-            const nonNumericCount = extractedCopays.filter(c => isNaN(parseFloat(c))).length;
-            if (nonNumericCount > 0) {
-                copayText += ` (excluding non-covered/N/A items)`;
-            }
-        }
-
-        // Center the text vertically within the rectangle
-        const textWidth = doc.getStringUnitWidth(copayText) * doc.getFontSize() / doc.internal.scaleFactor;
-        const textX = rectX + (rectWidth - textWidth) / 2;
-        const textY = rectY + rectHeight / 2 + 3; // Adjust '+3' for vertical alignment
-
-        doc.text(copayText, textX, textY);
-
+        if (copayErrors > 0) { copayText += ` (${copayErrors} item(s) could not be analyzed)`; }
+        else { const nonNum = extractedCopays.filter(c => isNaN(parseFloat(c))).length; if (nonNum > 0) { copayText += ` (excluding non-covered/N/A)`; } }
+        doc.text(copayText, margin + 2, yPos + 6.5);
+        yPos += 15; // Update yPos below banner
         doc.setTextColor(0, 0, 0); // Reset text color
-        yPos += rectHeight + 8; // Update yPos after the rectangle
 
         // --- Visit Details Section --- 
         doc.setFontSize(12);
-        doc.setFont("helvetica", "normal");
-        yPos = addText(`Date: ${format(new Date(visit.visit_date), 'PPPp')}`, margin, yPos);
-        // Removed Time line as PPPp includes time
-        yPos += 5;
-
-        // --- Patient Details Section --- 
         doc.setFont("helvetica", "bold");
-        yPos = addText('Patient Information', margin, yPos);
+        yPos = addText('Visit Details', margin, yPos, { fontSize: 12 });
+        doc.setFontSize(10);
         doc.setFont("helvetica", "normal");
-        // Use visit.patients
-        yPos = addText(`Name: ${visit.patients.username || 'N/A'}`, margin, yPos);
-        yPos += 5;
+        yPos = addText(`Date: ${format(new Date(visit.visit_date), 'PPPp')}`, margin, yPos, { fontSize: 10 });
+        yPos = addText(`Reason: ${visit.reason || 'N/A'}`, margin, yPos, { fontSize: 10 });
+        yPos += 4;
 
-        // --- Clinician Details Section --- 
+        // --- Patient Information Section --- 
+        doc.setFontSize(12);
         doc.setFont("helvetica", "bold");
-        yPos = addText('Clinician Information', margin, yPos);
+        yPos = addText('Patient Information', margin, yPos, { fontSize: 12 });
+        doc.setFontSize(10);
         doc.setFont("helvetica", "normal");
-        // Use visit.clinicians
-        yPos = addText(`Name: ${visit.clinicians.username || 'N/A'}`, margin, yPos);
-        yPos += 8;
+        yPos = addText(`Name: ${visit.patients.username || 'N/A'}`, margin, yPos, { fontSize: 10 });
+        yPos += 4;
+
+        // --- Clinician Information Section --- 
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        yPos = addText('Clinician Information', margin, yPos, { fontSize: 12 });
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        yPos = addText(`Name: ${visit.clinicians.username || 'N/A'}`, margin, yPos, { fontSize: 10 });
+        yPos += 4;
 
         // --- Visit Notes Section --- 
+        doc.setFontSize(12);
         doc.setFont("helvetica", "bold");
-        yPos = addText('Visit Notes', margin, yPos);
+        yPos = addText('Visit Notes', margin, yPos, { fontSize: 12 });
+        doc.setFontSize(9); // Smaller font for notes
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(10);
-        // Display notes *without* the embedded copay info
         const notesWithoutCopay = (visit.notes || '').replace(/\|\|\s*COPAY_INFO:.*?\|\|/, '').trim();
-        const notesLines = doc.splitTextToSize(notesWithoutCopay || 'No notes recorded.', doc.internal.pageSize.getWidth() - 2 * margin);
-        yPos = addText(notesLines, margin, yPos);
-        doc.setFontSize(12); // Reset font size
-        yPos += 8;
+        const notesLines = doc.splitTextToSize(notesWithoutCopay || 'No notes recorded.', contentWidth);
+        // Add simple background box for notes
+        doc.setFillColor(245, 245, 245); // Very light grey
+        doc.setDrawColor(220, 220, 220);
+        doc.rect(margin, yPos, contentWidth, notesLines.length * (doc.getFontSize() / 2.8) + 4, 'FD');
+        yPos = addText(notesLines, margin + 2, yPos + 2, { fontSize: 9 }); // Indent text slightly
+        doc.setFontSize(10); // Reset font size
+        yPos += 5;
 
         // --- Prescriptions Table --- 
-        doc.setFont("helvetica", "bold");
-        yPos = addText('Prescriptions', margin, yPos);
-        yPos -= 2; // Adjust space before table
-
         const prescriptions = visit.prescriptions || [];
-
         if (prescriptions.length > 0) {
+            doc.setFontSize(12);
+            doc.setFont("helvetica", "bold");
+            yPos = addText('Prescriptions Issued', margin, yPos, { fontSize: 12 });
+            yPos += 2; // Space before table starts
+
             const head = [['Medication', 'Dosage', 'Frequency', 'Notes', 'Patient Copay']];
             const body = prescriptions.map((rx, index) => {
-                // Use the parsed copay from the loop above
                 const copayInfo = extractedCopays[index] || 'N/A';
-                // Display notes *without* the embedded copay info
                 const rxNotesWithoutCopay = (rx.notes || '').replace(/\|\|\s*COPAY_INFO:.*?\|\|/, '').trim();
-
                 return [
                     rx.medication || 'N/A',
                     rx.dosage || 'N/A',
                     rx.frequency || 'N/A',
-                    rxNotesWithoutCopay || '', // Use notes without copay info
-                    copayInfo, // Use the parsed value
+                    rxNotesWithoutCopay || '',
+                    copayInfo,
                 ];
             });
 
@@ -264,51 +249,76 @@ const VisitDetailPage: React.FC = () => {
                 body: body,
                 startY: yPos,
                 theme: 'grid',
-                headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
-                styles: { fontSize: 9, cellPadding: 2 },
+                margin: { left: margin, right: margin }, // Ensure table respects margins
+                headStyles: {
+                    fillColor: headerColor, // Use theme color
+                    textColor: 255,
+                    fontStyle: 'bold',
+                    fontSize: 9,
+                    halign: 'center'
+                },
+                styles: {
+                    fontSize: 8.5,
+                    cellPadding: 2.5,
+                    valign: 'middle'
+                },
+                alternateRowStyles: {
+                    fillColor: [245, 245, 245] // Light grey for alternate rows
+                },
                 columnStyles: {
                     0: { cellWidth: 'auto' }, // Medication
                     1: { cellWidth: 'auto' }, // Dosage
                     2: { cellWidth: 'auto' }, // Frequency
-                    3: { cellWidth: 'auto' }, // Notes
+                    3: { cellWidth: 'auto' }, // Notes (expand)
                     4: { cellWidth: 25, halign: 'center' }, // Patient Copay
                 },
-                // Styling remains the same, uses the parsed copayInfo value
                 didParseCell: function (data) {
+                    // Copay styling remains the same
                     if (data.column.index === 4 && data.cell.section === 'body') {
-                        const text = data.cell.text[0]?.trim(); // Get the text content
-                        if (!isNaN(parseFloat(text))) { // It's a number (copay amount)
-                            data.cell.styles.fillColor = [220, 255, 220]; // Light green background
-                            data.cell.styles.textColor = [0, 100, 0];     // Dark green text
+                        const text = data.cell.text[0]?.trim();
+                        if (!isNaN(parseFloat(text))) {
+                            data.cell.styles.fillColor = [220, 255, 220];
+                            data.cell.styles.textColor = [0, 100, 0];
                             data.cell.styles.fontStyle = 'bold';
-                            data.cell.text = [`$${parseFloat(text).toFixed(2)}`]; // Add $ sign and format
+                            data.cell.text = [`$${parseFloat(text).toFixed(2)}`];
                         } else if (text === "Not Covered") {
-                            data.cell.styles.textColor = [255, 0, 0]; // Red text
+                            data.cell.styles.textColor = [200, 0, 0]; // Slightly less intense red
                             data.cell.styles.fontStyle = 'bold';
-                        } else { // N/A or Error
-                            data.cell.styles.textColor = [150, 150, 150]; // Grey text
+                        } else {
+                            data.cell.styles.textColor = [128, 128, 128]; // Darker Grey text
+                        }
+                    }
+                    // Prevent notes cell from becoming too tall
+                    if (data.column.index === 3 && data.cell.section === 'body') {
+                        if (data.cell.text && data.cell.text.length > 50) { // Limit notes display length in PDF table
+                            data.cell.text = [data.cell.text[0].substring(0, 50) + '...'];
                         }
                     }
                 },
-                didDrawPage: (_data) => {
-                    // Footer can be added here if needed for multi-page docs
-                    // console.log("Drew page", _data.pageNumber);
+                didDrawPage: (data) => {
+                    // --- Footer on each page ---
+                    doc.setFontSize(8);
+                    doc.setTextColor(150, 150, 150); // Grey footer text
+                    const footerText = `Generated on ${format(new Date(), 'PPP')}`;
+                    const pageNumText = `Page ${data.pageNumber}`;
+                    doc.text(footerText, margin, pageHeight - 8);
+                    doc.text(pageNumText, pageWidth - margin - doc.getStringUnitWidth(pageNumText) * doc.getFontSize() / doc.internal.scaleFactor, pageHeight - 8);
                 },
             });
 
         } else {
-            doc.setFont("helvetica", "normal");
-            addText('No prescriptions recorded for this visit.', margin, yPos + 5);
+            doc.setFont("helvetica", "italic");
+            doc.setFontSize(10);
+            addText('No prescriptions recorded for this visit.', margin, yPos + 3, { fontSize: 10 });
         }
 
         // --- Save the PDF --- 
-        // Use patient details from visit state
         doc.save(`Visit_Summary_${visit.patients?.username || 'Patient'}_${format(new Date(visit.visit_date), 'yyyyMMdd')}.pdf`);
         setIsGeneratingPdf(false); // End loading state
     };
     // --- End PDF Generation Function ---
 
-    // --- Render Logic ---
+    // === Render Logic ===
     if (authLoading || loading) {
         return (
             <div className="container mx-auto px-4 py-16 text-center text-white">

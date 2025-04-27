@@ -4,7 +4,7 @@
 
 <p align="center">
   <video controls loop muted width="720">
-    <source src="/static/public/trailer.mp4" type="video/mp4" />
+    <source src="https://github.com/arnavarora1710/prescripto/blob/4cf88263917c7cafeb7942dc5f5961bf9a34d73f/static/public/trailer.mp4?raw=true" type="video/mp4" />
     🎬 Your browser does not support embedded videos.
   </video>
 </p>

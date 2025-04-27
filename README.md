@@ -2,12 +2,7 @@
 
 **Your AI + Doctor–Powered Prescription Companion**
 
-<p align="center">
-  <video controls loop muted width="720">
-    <source src="https://github.com/arnavarora1710/prescripto/blob/4cf88263917c7cafeb7942dc5f5961bf9a34d73f/static/public/trailer.mp4?raw=true" type="video/mp4" />
-    🎬 Your browser does not support embedded videos.
-  </video>
-</p>
+https://github.com/user-attachments/assets/c8a2ca93-a41b-4139-b8c8-41295f6b52c5
 
 ---
 

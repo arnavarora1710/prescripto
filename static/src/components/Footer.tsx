@@ -20,13 +20,8 @@ const Footer: React.FC = () => {
 
             <div className="container mx-auto px-6 text-center md:flex md:justify-between md:items-center relative z-10">
                 <p className="text-sm text-off-white/50 mb-4 md:mb-0">
-                    &copy; {new Date().getFullYear()} Prescripto AI | Personalized Prescriptions, Intelligently Optimized.
+                    &copy; {new Date().getFullYear()} Prescripto | Personalized Prescriptions, Intelligently Optimized.
                 </p>
-                <div className="flex justify-center space-x-6 text-sm">
-                    <a href="#" className="text-off-white/70 hover:text-electric-blue hover:underline transition duration-300">Privacy Policy</a>
-                    <a href="#" className="text-off-white/70 hover:text-electric-blue hover:underline transition duration-300">Terms of Service</a>
-                    <a href="#" className="text-off-white/70 hover:text-electric-blue hover:underline transition duration-300">Contact Us</a>
-                </div>
             </div>
         </motion.footer>
     );

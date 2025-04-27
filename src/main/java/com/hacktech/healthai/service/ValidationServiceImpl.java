@@ -48,13 +48,13 @@ public class ValidationServiceImpl implements ValidationService {
                 }
 
                 // b) Duplicate Therapy Check (Simple Example: exact match on name)
-                // if (currentPrescriptions.stream().anyMatch(current -> current.medicationName() != null &&
-                //         current.medicationName().equalsIgnoreCase(proposed.medicationName()))) {
-                //     logger.warn("Potential Duplicate for patient {}: {}", patientIdForLogging,
-                //             proposed.medicationName());
-                //     issues.add(new ValidationIssueDto("DUPLICATE", proposed.medicationName(),
-                //             "Patient is already prescribed " + proposed.medicationName()));
-                // }
+                if (currentPrescriptions.stream().anyMatch(current -> current.medicationName() != null &&
+                        current.medicationName().equalsIgnoreCase(proposed.medicationName()))) {
+                    logger.warn("Potential Duplicate for patient {}: {}", patientIdForLogging,
+                            proposed.medicationName());
+                    issues.add(new ValidationIssueDto("DUPLICATE", proposed.medicationName(),
+                            "Patient is already prescribed " + proposed.medicationName()));
+                }
 
                 // c) Interaction Check (Placeholder - requires external data/library)
                 // TODO: Implement drug interaction checks using provided currentPrescriptions

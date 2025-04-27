@@ -16,7 +16,7 @@ COPY static ./static
 RUN mvn clean package -DskipTests -Dfrontend.skip=true
 
 # Final image
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:21-jre
 
 WORKDIR /app
 
@@ -26,9 +26,13 @@ COPY --from=build /app/target/*.jar app.jar
 # Copy the latest frontend build directly
 COPY static/dist /app/static/
 
+# Copy Google Cloud service account key
+COPY gcloud-key.json /app/gcloud-key.json
+
 # Environment variables
 ENV SPRING_PROFILES_ACTIVE=docker
 ENV SPRING_WEB_RESOURCES_STATIC_LOCATIONS=file:/app/static/
+ENV GOOGLE_APPLICATION_CREDENTIALS=/app/gcloud-key.json
 
 # Expose port
 EXPOSE 8080

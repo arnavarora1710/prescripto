@@ -17,5 +17,5 @@ services:
       - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
       - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
       # Disable Google Cloud Vision by setting this to "true"
-      - DISABLE_VISION_API=true
+      - DISABLE_VISION_API=false
     restart: unless-stopped

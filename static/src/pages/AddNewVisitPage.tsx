@@ -1026,7 +1026,7 @@ Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
                             <div className="flex justify-center mb-5 p-4 bg-white rounded-lg inline-block shadow-lg">
                                 {drawingChannelId && (
                                     <QRCode
-                                        value={`https://8dd4-131-215-220-33.ngrok-free.app/draw/${drawingChannelId}`} // <-- Ensure this points to the FRONTEND (Vite/5173) ngrok URL
+                                        value={`http://localhost:8080/draw/${drawingChannelId}`} // Using Spring Boot port 8080 instead of Vite port 5173
                                         size={180}
                                         level="M" // Error correction level
                                     />

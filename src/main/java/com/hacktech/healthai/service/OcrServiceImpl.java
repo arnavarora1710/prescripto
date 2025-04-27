@@ -5,6 +5,7 @@ import com.hacktech.healthai.dto.OcrResponseDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 // Google Cloud Vision Imports
@@ -26,23 +27,37 @@ public class OcrServiceImpl implements OcrService {
 
     private static final Logger log = LoggerFactory.getLogger(OcrServiceImpl.class);
     private final ImageAnnotatorClient visionClient;
+    private final boolean visionApiDisabled;
 
     @Autowired
-    public OcrServiceImpl() throws IOException {
-        // Initialize the client using Application Default Credentials (ADC)
-        // Ensure you have authenticated via `gcloud auth application-default login`
-        // or set the GOOGLE_APPLICATION_CREDENTIALS environment variable.
-        this.visionClient = ImageAnnotatorClient.create();
-        log.info("OcrServiceImpl initialized with Google Cloud Vision client using ADC.");
+    public OcrServiceImpl(@Value("${DISABLE_VISION_API:false}") boolean disableVisionApi) throws IOException {
+        this.visionApiDisabled = disableVisionApi;
+
+        if (visionApiDisabled) {
+            log.info("Google Cloud Vision API is disabled via configuration. OCR service will return mock responses.");
+            this.visionClient = null;
+        } else {
+            // Initialize the client using Application Default Credentials (ADC)
+            // Ensure you have authenticated via `gcloud auth application-default login`
+            // or set the GOOGLE_APPLICATION_CREDENTIALS environment variable.
+            this.visionClient = ImageAnnotatorClient.create();
+            log.info("OcrServiceImpl initialized with Google Cloud Vision client using ADC.");
+        }
     }
 
     @Override
     public OcrResponseDto extractTextFromImage(OcrRequestDto requestDto) throws Exception {
-        log.info("Received OCR request for Google Cloud Vision processing (base64 image length: {})",
+        log.info("Received OCR request for processing (base64 image length: {})",
                 requestDto.getBase64Image() != null ? requestDto.getBase64Image().length() : 0);
 
         if (requestDto.getBase64Image() == null || requestDto.getBase64Image().isEmpty()) {
             throw new IllegalArgumentException("Base64 image data cannot be null or empty.");
+        }
+
+        // Return mock response if Vision API is disabled
+        if (visionApiDisabled) {
+            log.info("Vision API is disabled. Returning mock OCR response.");
+            return new OcrResponseDto("OCR processing is disabled. This is a mock response.");
         }
 
         List<AnnotateImageRequest> requests = new ArrayList<>();
@@ -62,8 +77,7 @@ public class OcrServiceImpl implements OcrService {
 
         Image img = Image.newBuilder().setContent(imgBytes).build();
         Feature feat = Feature.newBuilder().setType(Feature.Type.TEXT_DETECTION).build();
-        AnnotateImageRequest visionRequest =
-                AnnotateImageRequest.newBuilder().addFeatures(feat).setImage(img).build();
+        AnnotateImageRequest visionRequest = AnnotateImageRequest.newBuilder().addFeatures(feat).setImage(img).build();
         requests.add(visionRequest);
 
         try {
@@ -82,13 +96,14 @@ public class OcrServiceImpl implements OcrService {
             if (res.hasError()) {
                 log.error("Google Cloud Vision API Error: {}", res.getError().getMessage());
                 throw new Exception("Google Cloud Vision API Error: " + res.getError().getMessage());
-        }
+            }
 
             // Get the full text annotation
             String extractedText = "";
             if (res.hasFullTextAnnotation()) {
                 extractedText = res.getFullTextAnnotation().getText();
-                log.info("Successfully extracted text from Google Cloud Vision. Text length: {}", extractedText.length());
+                log.info("Successfully extracted text from Google Cloud Vision. Text length: {}",
+                        extractedText.length());
             } else {
                 log.info("Google Cloud Vision did not find any text.");
                 extractedText = "No text detected.";
@@ -101,9 +116,11 @@ public class OcrServiceImpl implements OcrService {
             // You might want to check for specific Google Cloud exceptions if needed
             throw new Exception("An unexpected error occurred during OCR processing: " + e.getMessage());
         }
-        // Note: The ImageAnnotatorClient should be closed when the application shuts down.
+        // Note: The ImageAnnotatorClient should be closed when the application shuts
+        // down.
         // Spring Boot manages the lifecycle of beans, so direct closing isn't usually
-        // needed here unless explicitly required or using try-with-resources for the client
+        // needed here unless explicitly required or using try-with-resources for the
+        // client
         // within the method (which creates a new client per request, less efficient).
     }
 }

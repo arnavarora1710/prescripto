@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  prescripto-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      # Add your application environment variables here
+      # These will override application.properties values
+      - SUPABASE_HOST=${SUPABASE_HOST}
+      - SUPABASE_DB_USER=${SUPABASE_DB_USER}
+      - SUPABASE_DB_PWD=${SUPABASE_DB_PWD}
+      - VITE_GEMINI_API_KEY=${VITE_GEMINI_API_KEY}
+      - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+      - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+      # Disable Google Cloud Vision by setting this to "true"
+      - DISABLE_VISION_API=true
+    restart: unless-stopped

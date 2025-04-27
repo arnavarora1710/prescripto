@@ -3,8 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { Patient } from '../types/app'; // Patient type should include medical/insurance details
 import { useAuth } from '../context/AuthContext'; // Need clinician ID
-import { FaSearch, FaTimes, FaUserCircle, FaSpinner, FaArrowLeft, FaUserPlus, FaCheckCircle, FaExclamationTriangle } from 'react-icons/fa'; // Removed FaNotesMedical
+import { FaSearch, FaTimes, FaUserCircle, FaSpinner, FaArrowLeft, FaUserPlus, FaCheckCircle, FaExclamationTriangle, FaUpload, FaImage, FaQrcode, FaTabletAlt } from 'react-icons/fa'; // Removed FaNotesMedical
 import { v4 as uuidv4 } from 'uuid'; // Import uuid
+// Import the new QR code library
+import QRCode from "react-qr-code";
+import { GoogleGenerativeAI } from "@google/generative-ai"; // Import Gemini
 
 // Define the delimiter used for parsing LLM recommendations
 const RECOMMENDATION_DELIMITER = "---RECOMMENDATION---";
@@ -56,9 +59,14 @@ interface Recommendation {
 }
 // --- End Recommendation State Structure ---
 
+// Define the structure for the drawing update payload
+interface DrawingUpdatePayload {
+    base64Image: string;
+}
+
 const AddNewVisitPage: React.FC = () => {
     const navigate = useNavigate();
-    const { profile: authProfile, loading: authLoading } = useAuth();
+    const { profile: authProfile, loading: authLoading, error: authError } = useAuth();
     const clinicianId = authProfile?.role === 'clinician' ? authProfile.profileId : null;
 
     const [searchTerm, setSearchTerm] = useState('');
@@ -89,12 +97,28 @@ const AddNewVisitPage: React.FC = () => {
     const [fullPatientDataForVisit, setFullPatientDataForVisit] = useState<FullPatientData | null>(null);
     const [currentPrescriptionsList, setCurrentPrescriptionsList] = useState<CurrentPrescriptionDto[]>([]);
     const [patientAllergiesList, setPatientAllergiesList] = useState<string[]>([]);
-    const [canRegenerate, setCanRegenerate] = useState(false); // State to control regeneration button visibility
-    const [loadingRegenerate, setLoadingRegenerate] = useState(false); // State for regeneration loading indicator
+    const [canRegenerate, setCanRegenerate] = useState(false);
+    const [loadingRegenerate, setLoadingRegenerate] = useState(false);
     // --- End New State ---
 
-    // const [searchParams] = useSearchParams();
-    // const patientId = searchParams.get("patientId");
+    // --- State for Uploaded Drawing ---
+    const [drawingImageFile, setDrawingImageFile] = useState<File | null>(null);
+    const [drawingImagePreviewUrl, setDrawingImagePreviewUrl] = useState<string | null>(null);
+    const [drawingBase64, setDrawingBase64] = useState<string | null>(null);
+    const [processingDrawing, setProcessingDrawing] = useState(false);
+    const [drawingError, setDrawingError] = useState<string | null>(null);
+    const [drawingUploadUrl, setDrawingUploadUrl] = useState<string | null>(null); // URL after upload to storage
+    const fileInputRef = useRef<HTMLInputElement>(null); // Ref for the file input
+    // --- End Drawing State ---
+
+    // Add back QR code related state
+    const [showQrCode, setShowQrCode] = useState(false);
+    const [drawingChannelId, setDrawingChannelId] = useState<string | null>(null);
+    const [isListeningForDrawing, setIsListeningForDrawing] = useState(false);
+
+    // --- Refs ---
+    const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const drawingChannelRef = useRef<any>(null); // Store Supabase channel instance
 
     // Debounced search effect
     useEffect(() => {
@@ -158,7 +182,15 @@ const AddNewVisitPage: React.FC = () => {
         setFullPatientDataForVisit(null);
         setCurrentPrescriptionsList([]);
         setPatientAllergiesList([]);
-        fetchPatientContextData(patient.id); // Fetch data needed for validation
+        // Reset drawing state
+        setDrawingImageFile(null);
+        setDrawingImagePreviewUrl(null);
+        setProcessingDrawing(false);
+        setDrawingError(null);
+        setDrawingUploadUrl(null);
+        if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
+        // Fetch context
+        fetchPatientContextData(patient.id);
     };
 
     const handleClearSelection = () => {
@@ -173,7 +205,100 @@ const AddNewVisitPage: React.FC = () => {
         searchInputRef.current?.focus();
     };
 
-    // --- Function to Parse LLM Output ---
+    // --- Drawing Upload Handler ---
+    const handleDrawingUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (file && file.type.startsWith('image/')) {
+            setDrawingError(null);
+            setDrawingImageFile(file);
+
+            // Create & set preview URL
+            const previewUrl = URL.createObjectURL(file);
+            // Revoke previous URL if exists
+            if (drawingImagePreviewUrl) {
+                URL.revokeObjectURL(drawingImagePreviewUrl);
+            }
+            setDrawingImagePreviewUrl(previewUrl);
+
+            // Read file as base64 for LLM processing
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const base64String = reader.result as string;
+                // Remove the prefix (e.g., "data:image/png;base64,")
+                const base64Data = base64String.split(',', 2)[1];
+                if (base64Data) {
+                    setProcessingDrawing(true);
+                    processDrawingWithLLM(base64Data);
+                } else {
+                    setDrawingError("Failed to read image data for processing.");
+                    setDrawingImageFile(null); // Clear file if reading fails
+                    setDrawingImagePreviewUrl(null);
+                    URL.revokeObjectURL(previewUrl); // Clean up preview URL
+                }
+            };
+            reader.onerror = () => {
+                console.error("FileReader error");
+                setDrawingError("Failed to read the selected image file.");
+                setDrawingImageFile(null);
+                setDrawingImagePreviewUrl(null);
+                URL.revokeObjectURL(previewUrl); // Clean up preview URL
+            };
+            reader.readAsDataURL(file);
+        } else {
+            setDrawingError("Please select a valid image file (PNG, JPG, etc.).");
+            setDrawingImageFile(null);
+            setDrawingImagePreviewUrl(null);
+            if (drawingImagePreviewUrl) {
+                URL.revokeObjectURL(drawingImagePreviewUrl); // Clean up previous preview if invalid file selected
+            }
+            if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
+        }
+    };
+    // --- End Drawing Upload Handler ---
+
+    // --- LLM Processing Function (Now takes base64 string) ---
+    const processDrawingWithLLM = async (base64ImageData: string) => {
+        console.log("Processing uploaded drawing with LLM...");
+        setProcessingDrawing(true); // Ensure loading state is on
+        setDrawingError(null);
+        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+        if (!apiKey) {
+            setDrawingError("Gemini API Key not configured.");
+            setProcessingDrawing(false);
+            return;
+        }
+
+        try {
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // Or gemini-pro-vision
+
+            const prompt = "Transcribe the handwriting and drawings in this image into concise clinical visit notes. Focus on medical terms, symptoms, and potential diagnoses or plans. Format the output clearly.";
+            const imagePart = {
+                inlineData: {
+                    mimeType: "image/png", // Assuming PNG, adjust if other types allowed
+                    data: base64ImageData,
+                },
+            };
+
+            const result = await model.generateContent([prompt, imagePart]);
+            const response = result.response;
+            const text = response.text();
+
+            console.log("LLM Transcription Result:", text);
+            // Append transcription to existing notes or set if notes are empty
+            setVisitNotes(prev => prev ? `${prev}\n\n--- Transcribed Notes from Drawing ---\n${text}` : text);
+            setDrawingError(null);
+
+        } catch (error: any) {
+            console.error("Error processing drawing with Gemini:", error);
+            setDrawingError(`AI transcription failed: ${error.response?.data?.error?.message || error.message || 'Unknown error'}`);
+            // Keep the image preview visible so user knows upload happened but processing failed
+        } finally {
+            setProcessingDrawing(false);
+        }
+    };
+    // --- End LLM Processing Function ---
+
     const parseLlmRecommendations = (generatedText: string | undefined): Recommendation[] => {
         if (!generatedText) return [];
         console.log("Parsing LLM Text:", generatedText);
@@ -211,12 +336,11 @@ const AddNewVisitPage: React.FC = () => {
         console.log("Parsed Recommendations:", recommendations);
         return recommendations;
     };
-    // --- End Parsing Function ---
 
     const handleCreateVisit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedPatient || !clinicianId || !visitReason.trim() || !visitNotes.trim()) {
-            setSubmitError("Please select a patient and enter visit reason and notes.");
+        if (!selectedPatient || !clinicianId || !visitReason.trim()) {
+            setSubmitError("Please select a patient and enter visit reason.");
             return;
         }
 
@@ -227,14 +351,15 @@ const AddNewVisitPage: React.FC = () => {
         setErrorPrescription(null);
         setSuccessMessage(null);
         setRecommendations([]);
-        setVisitId(null);
+        setVisitId(null); // Reset visitId before creating
         setIsValidated(false);
         setCanFinalize(false);
         setFinalizeError(null);
-        let createdVisitId: string | null = null; // Local variable for this execution
+        let createdVisitId: string | null = null;
+        let uploadedDrawingPath: string | null = null;
 
         try {
-            // --- 1. Create Visit Record ---
+            // --- 1. Create Visit Record (without drawing URL initially) ---
             console.log(`Creating visit for patient ${selectedPatient.id} by clinician ${clinicianId}`);
             const { data: newVisit, error: insertError } = await supabase
                 .from('visits')
@@ -244,6 +369,7 @@ const AddNewVisitPage: React.FC = () => {
                     visit_date: new Date().toISOString(),
                     reason: visitReason.trim(),
                     notes: visitNotes.trim() || null,
+                    // drawing_image_url: null // Set later after upload
                 })
                 .select('id')
                 .single();
@@ -252,38 +378,79 @@ const AddNewVisitPage: React.FC = () => {
             createdVisitId = newVisit.id;
             setVisitId(createdVisitId); // Update state
             console.log("Visit created successfully, ID:", createdVisitId);
-            setSuccessMessage(`Visit created. Generating recommendations...`);
+            setSuccessMessage(`Visit created. Processing notes/recommendations...`);
 
-            // --- 2. Fetch Full Patient Data (if needed) ---
+            // --- 2. Upload Drawing Image (if exists) ---
+            if (drawingImageFile) {
+                console.log("Uploading drawing image...");
+                const fileExt = drawingImageFile.name.split('.').pop();
+                const fileName = `${createdVisitId}-${Date.now()}.${fileExt}`;
+                const filePath = `visit-drawings/${fileName}`;
+
+                const { data: uploadData, error: uploadError } = await supabase.storage
+                    .from('visit-drawings') // Ensure this bucket exists and has appropriate policies
+                    .upload(filePath, drawingImageFile, {
+                        cacheControl: '3600',
+                        upsert: false,
+                    });
+
+                if (uploadError) {
+                    throw new Error(`Drawing Upload Error: ${uploadError.message}`);
+                }
+                uploadedDrawingPath = uploadData.path;
+                console.log("Drawing uploaded successfully:", uploadedDrawingPath);
+
+                // --- 3. Update Visit Record with Drawing URL ---
+                // Construct the public URL (adjust bucket name if needed)
+                const { data: urlData } = supabase.storage.from('visit-drawings').getPublicUrl(uploadedDrawingPath);
+                const publicUrl = urlData?.publicUrl;
+                console.log("Public URL for drawing:", publicUrl);
+
+                if (publicUrl) {
+                    const { error: updateError } = await supabase
+                        .from('visits')
+                        .update({ drawing_image_url: publicUrl }) // Use the public URL
+                        .eq('id', createdVisitId);
+
+                    if (updateError) {
+                        // Log error but maybe don't fail the whole process?
+                        console.error("Failed to update visit with drawing URL:", updateError.message);
+                        setSubmitError("Visit saved, but failed to link drawing image.");
+                    } else {
+                        setDrawingUploadUrl(publicUrl); // Store for potential display/use
+                    }
+                } else {
+                    console.error("Could not get public URL for drawing.");
+                    setSubmitError("Visit saved, but failed to get public URL for drawing.");
+                }
+            }
+
+            // --- 4. Fetch Full Patient Data (if needed for recommendations) ---
             let patientData = fullPatientDataForVisit;
             if (!patientData) {
-                 await fetchPatientContextData(selectedPatient.id);
-                 // Re-fetch from state after update
-                 patientData = fullPatientDataForVisit; 
-                 // Check again after attempting fetch
-                 if (!patientData) throw new Error("Failed to load patient data before LLM call.");
+                await fetchPatientContextData(selectedPatient.id);
+                patientData = fullPatientDataForVisit;
+                if (!patientData) throw new Error("Failed to load patient data before LLM recommendation call.");
             }
-           
-            // --- 3. Call Gemini API Client-Side ---
-            const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-            if (!apiKey) throw new Error("Gemini API Key not configured.");
-            const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
-            const prompt = `
+
+            // --- 5. Call Gemini API for PRESCRIPTION Recommendations (if visitNotes exist) ---
+            if (visitNotes.trim()) { // Only generate Rx if notes exist (from typing or drawing transcription)
+                const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+                if (!apiKey) throw new Error("Gemini API Key not configured for recommendations.");
+                const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+                const prompt = `
 Clinician requesting prescription recommendations for patient: ${selectedPatient.username} (ID: ${selectedPatient.id}).
 Visit Reason: ${visitReason}
 Clinician Notes: ${visitNotes}
-
 Patient Context:
 Allergies: ${patientAllergiesList.join(', ')}
 Current Medications: ${currentPrescriptionsList.map(p => p.medicationName).join(', ')}
 Relevant Medical History: ${JSON.stringify(patientData.medical_history || '{}').substring(0, 100)}...
-
 Suggest up to 3 distinct prescription options appropriate for the visit reason and clinician notes, considering the patient context. For each option, provide:
 1. Medication Name
 2. Dosage (e.g., "10mg", "500mg") or "N/A"
 3. Frequency (e.g., "once daily", "twice daily", "as needed") or "N/A"
 4. Brief Notes/Rationale (max 20 words, explaining why this drug might be suitable).
-
 Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
 Example format:
 Medication Name: [Name]
@@ -291,73 +458,58 @@ Dosage: [Dosage]
 Frequency: [Frequency]
 LLM Notes: [Rationale]
 ${RECOMMENDATION_DELIMITER}
-Medication Name: [Name 2]
-Dosage: [Dosage 2]
-Frequency: [Frequency 2]
-LLM Notes: [Rationale 2]
-${RECOMMENDATION_DELIMITER}
 ... (up to 3 total)
 `;
 
-            // Debugging: Log data sent to Gemini
-            console.log("--- Data for Gemini Prompt ---");
-            console.log("Visit Reason:", visitReason);
-            console.log("Visit Notes:", visitNotes);
-            console.log("Allergies:", patientAllergiesList);
-            console.log("Current Meds:", currentPrescriptionsList);
-            console.log("History (raw):", patientData?.medical_history);
-            console.log("Prompt sent to Gemini:", prompt);
-            console.log("--- End Data --- ");
+                console.log("Calling Gemini API for prescription recommendations...");
+                const geminiResponse = await fetch(geminiApiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+                });
+                if (!geminiResponse.ok) {
+                    const errorData = await geminiResponse.json().catch(() => ({ message: 'Unknown error structure' }));
+                    throw new Error(`Gemini Recommendation API call failed: ${geminiResponse.status} - ${errorData?.error?.message || 'Details unavailable'}`);
+                }
+                const geminiResult = await geminiResponse.json();
+                const generatedText = geminiResult?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!generatedText) console.warn("Gemini recommendation response did not contain text."); // Don't throw, maybe no recs needed
 
-            console.log("Calling Gemini API...");
-            const geminiResponse = await fetch(geminiApiUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }],
-                    // Optional: Add safety settings if needed
-                    // safetySettings: [ ... ], 
-                    // generationConfig: { ... } 
-                }),
-            });
-            if (!geminiResponse.ok) { 
-                 const errorData = await geminiResponse.json().catch(() => ({ message: 'Unknown error structure' }));
-                 throw new Error(`Gemini API call failed: ${geminiResponse.status} - ${errorData?.error?.message || 'Details unavailable'}`);
-            }
-            const geminiResult = await geminiResponse.json();
-            const generatedText = geminiResult?.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (!generatedText) throw new Error("Gemini response did not contain text.");
-            console.log("Gemini Generated Text:", generatedText);
+                console.log("Gemini Recommendation Text:", generatedText);
+                const parsedRecs = parseLlmRecommendations(generatedText);
+                setRecommendations(parsedRecs);
 
-            // --- 4. Parse LLM Response and Set State for Review --- 
-            const parsedRecs = parseLlmRecommendations(generatedText);
-            setRecommendations(parsedRecs);
-            
-            if (parsedRecs.length > 0) {
-                setSuccessMessage("Recommendations generated. Please review and validate below.");
+                if (parsedRecs.length > 0) {
+                    setSuccessMessage("Visit saved & recommendations generated. Review below.");
+                } else {
+                    setSuccessMessage("Visit saved. No recommendations generated by AI.");
+                    setIsValidated(true); // Allow finalizing immediately if no recs
+                    setCanFinalize(true);
+                }
             } else {
-                setSuccessMessage("Visit created. No recommendations generated by AI.");
-                setIsValidated(true); 
+                // No notes were entered or generated
+                setSuccessMessage("Visit saved. No notes provided for recommendation generation.");
+                setRecommendations([]);
+                setIsValidated(true); // Allow finalizing
                 setCanFinalize(true);
             }
 
-            // --- STOP before inserting prescription to DB --- 
-
         } catch (err: any) {
-            console.error("Error during visit creation or recommendation generation:", err);
-            setErrorPrescription(err.message || "An unknown error occurred.");
-            setSuccessMessage(null); // Clear success message on error
-             // Optional: Consider rolling back the visit if recommendations fail spectacularly
-             // if (createdVisitId) { console.warn("Need to decide if visit should be deleted on error"); }
+            console.error("Error during visit creation/processing:", err);
+            // Basic error for user
+            setSubmitError(err.message || "An unknown error occurred during saving or processing.");
+            setSuccessMessage(null);
+            // Consider if visit should be deleted if subsequent steps fail significantly?
+            if (createdVisitId) {
+                console.warn("Visit created but subsequent processing failed. Visit ID:", createdVisitId);
+                // Maybe add a UI element to allow user to delete this incomplete visit?
+            }
         } finally {
             setLoadingSubmit(false);
-            setLoadingPrescription(false);
+            setLoadingPrescription(false); // Turn off both loaders
         }
     };
 
-    // Helper to fetch patient allergies and current prescriptions
     const fetchPatientContextData = async (patientId: string) => {
         try {
             console.log("Fetching context data (allergies, current meds) for", patientId);
@@ -376,8 +528,8 @@ ${RECOMMENDATION_DELIMITER}
                 .from('prescriptions')
                 .select('medicationName:medication') // Select only medication name
                 .eq('patient_id', patientId)
-                // TODO: Add logic to filter for *active* prescriptions if necessary
-                // .eq('status', 'active') 
+            // TODO: Add logic to filter for *active* prescriptions if necessary
+            // .eq('status', 'active') 
             if (medsError) throw new Error(`Current Meds Fetch Error: ${medsError.message}`);
             setCurrentPrescriptionsList((currentMeds as CurrentPrescriptionDto[]) || []);
             console.log("Fetched Current Meds:", currentMeds);
@@ -386,16 +538,16 @@ ${RECOMMENDATION_DELIMITER}
             const history = patientData.medical_history as any;
             let allergies: string[] = [];
             if (history && typeof history === 'object') {
-                 if (Array.isArray(history.allergies)) {
-                     allergies = history.allergies.filter((a: any) => typeof a === 'string');
-                 } else {
+                if (Array.isArray(history.allergies)) {
+                    allergies = history.allergies.filter((a: any) => typeof a === 'string');
+                } else {
                     // Fallback basic check (improve this)
                     Object.entries(history).forEach(([key, value]) => {
                         if (typeof key === 'string' && key.toLowerCase().includes('allergy') && typeof value === 'string') {
-                           allergies.push(value);
+                            allergies.push(value);
                         }
                     });
-                 }
+                }
             }
             setPatientAllergiesList(allergies);
             console.log("Parsed Allergies:", allergies);
@@ -410,7 +562,6 @@ ${RECOMMENDATION_DELIMITER}
         }
     };
 
-    // --- Handlers for Recommendation Review ---
     const handleStatusChange = (id: string, newStatus: 'approved' | 'rejected') => {
         const updatedRecommendations = recommendations.map(rec => {
             if (rec.id === id) {
@@ -491,7 +642,7 @@ ${RECOMMENDATION_DELIMITER}
             setIsValidated(true);
             setCanFinalize(!hasIssues); // Can finalize only if NO issues
             if (hasIssues) {
-                 setErrorPrescription("Validation found potential issues. Please review warnings.");
+                setErrorPrescription("Validation found potential issues. Please review warnings.");
             } else {
                 setSuccessMessage("Validation successful. Ready to finalize.");
             }
@@ -502,14 +653,14 @@ ${RECOMMENDATION_DELIMITER}
             setIsValidated(false);
             setCanFinalize(false);
         } finally {
-             setLoadingPrescription(false);
+            setLoadingPrescription(false);
         }
     };
 
     const handleFinalize = async () => {
         if (!visitId || !selectedPatient || !clinicianId) {
-             setFinalizeError("Cannot finalize: Missing visit, patient, or clinician context.");
-             return;
+            setFinalizeError("Cannot finalize: Missing visit, patient, or clinician context.");
+            return;
         }
         const finalPrescriptions = recommendations.filter(r => r.status === 'approved');
         if (finalPrescriptions.length === 0) {
@@ -534,7 +685,7 @@ ${RECOMMENDATION_DELIMITER}
         }));
 
         try {
-             console.log("Inserting final prescriptions:", prescriptionsToInsert);
+            console.log("Inserting final prescriptions:", prescriptionsToInsert);
             const { error: insertError } = await supabase
                 .from('prescriptions')
                 .insert(prescriptionsToInsert);
@@ -547,18 +698,17 @@ ${RECOMMENDATION_DELIMITER}
             setSuccessMessage("Visit and approved prescriptions finalized successfully!");
             // Redirect after a short delay
             setTimeout(() => {
-                 navigate('/clinician/dashboard');
+                navigate('/clinician/dashboard');
             }, 2000);
 
         } catch (error: any) {
             console.error("Error finalizing prescriptions:", error);
             setFinalizeError(`Failed to finalize: ${error.message}`);
         } finally {
-             setIsFinalizing(false);
+            setIsFinalizing(false);
         }
     };
 
-    // Function to handle regeneration of suggestions
     const handleRegenerate = useCallback(async () => {
         if (!visitNotes || !selectedPatient || !fullPatientDataForVisit) {
             setErrorPrescription("Cannot regenerate: Missing visit notes, patient selection, or patient context.");
@@ -583,9 +733,9 @@ ${RECOMMENDATION_DELIMITER}
 
         const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
         if (!apiKey) {
-             setErrorPrescription("Gemini API Key not configured.");
-             setLoadingRegenerate(false);
-             return;
+            setErrorPrescription("Gemini API Key not configured.");
+            setLoadingRegenerate(false);
+            return;
         }
         const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
 
@@ -643,17 +793,85 @@ Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
                 setCanRegenerate(false); // Hide regenerate button until another rejection
             } else {
                 setErrorPrescription("AI could not generate new recommendations based on the constraints.");
-                 // Keep canRegenerate true so user can try again or modify rejection notes
+                // Keep canRegenerate true so user can try again or modify rejection notes
             }
 
         } catch (error: any) {
             console.error("Error regenerating recommendations:", error);
             setErrorPrescription(`Regeneration Failed: ${error.message}`);
-             // Keep canRegenerate true so user can try again
+            // Keep canRegenerate true so user can try again
         } finally {
             setLoadingRegenerate(false);
         }
-    }, [visitReason, visitNotes, selectedPatient, recommendations, patientAllergiesList, currentPrescriptionsList, fullPatientDataForVisit, clinicianId]); // Added dependencies
+    }, [visitReason, visitNotes, selectedPatient, recommendations, patientAllergiesList, currentPrescriptionsList, fullPatientDataForVisit]);
+
+    // Subscribe to Supabase channel for drawing updates
+    const listenForDrawingUpdates = useCallback((channelId: string) => {
+        console.log(`Listening on channel: drawing-updates-${channelId}`);
+        setIsListeningForDrawing(true);
+
+        drawingChannelRef.current = supabase
+            .channel(`drawing-updates-${channelId}`)
+            .on<DrawingUpdatePayload>(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'drawing_updates', filter: `channel_id=eq.${channelId}` },
+                (payload) => {
+                    console.log('Received drawing update via Supabase channel:', payload);
+                    if (payload.new && payload.new.base64Image) {
+                        setDrawingBase64(payload.new.base64Image);
+                        setDrawingImagePreviewUrl(payload.new.base64Image); // Show preview
+                        setShowQrCode(false); // Hide QR code
+                        setIsListeningForDrawing(false); // Stop listening indicator
+                        if (drawingChannelRef.current) {
+                            supabase.removeChannel(drawingChannelRef.current); // Unsubscribe
+                            drawingChannelRef.current = null;
+                        }
+                        setDrawingError(null); // Clear previous errors
+                        // Automatically process the drawing
+                        processDrawingWithLLM(payload.new.base64Image);
+                    } else {
+                        console.warn("Received payload without new image data:", payload);
+                        setDrawingError("Received update from tablet, but image data was missing.");
+                    }
+                }
+            )
+            .subscribe((status, err) => {
+                if (status === 'SUBSCRIBED') {
+                    console.log(`Successfully subscribed to channel: drawing-updates-${channelId}`);
+                } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                    console.error(`Channel subscription error (${status}):`, err);
+                    setDrawingError(`Failed to connect to drawing sync service (${status}). Please try again.`);
+                    setIsListeningForDrawing(false);
+                    setShowQrCode(false); // Hide QR code on error
+                }
+            });
+
+        // Cleanup function for useEffect or component unmount
+        return () => {
+            if (drawingChannelRef.current) {
+                console.log("Cleaning up Supabase channel subscription.");
+                supabase.removeChannel(drawingChannelRef.current);
+                drawingChannelRef.current = null;
+            }
+        };
+    }, [processDrawingWithLLM]); // Add processDrawingWithLLM dependency
+
+    const handleDrawNotesClick = () => {
+        const newChannelId = uuidv4();
+        setDrawingChannelId(newChannelId);
+        setShowQrCode(true);
+        listenForDrawingUpdates(newChannelId);
+    };
+
+    const handleCancelDrawing = () => {
+        setShowQrCode(false);
+        setDrawingChannelId(null);
+        setIsListeningForDrawing(false);
+        if (drawingChannelRef.current) {
+            supabase.removeChannel(drawingChannelRef.current);
+            drawingChannelRef.current = null;
+        }
+    };
 
     // Check if clinician profile is still loading or missing
     if (authLoading) {
@@ -764,110 +982,206 @@ Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
                         </div>
                     </div>
 
-                    {/* Visit Form */}
-                    <form onSubmit={handleCreateVisit} className="space-y-6">
-                        {/* Reason Input */}
-                        <div>
-                            <label htmlFor="visitReason" className="block text-sm font-medium text-off-white/80 mb-1">
-                                Reason for Visit <span className="text-red-400">*</span>
-                            </label>
-                            <input
-                                id="visitReason"
-                                type="text"
-                                required
-                                value={visitReason}
-                                onChange={(e) => setVisitReason(e.target.value)}
-                                className="w-full px-4 py-2.5 rounded-md bg-dark-input border border-border-color text-white placeholder-off-white/50 focus:outline-none focus:ring-2 focus:ring-electric-blue focus:border-transparent transition duration-150"
-                                placeholder="e.g., Follow-up, Checkup, Consultation"
-                                disabled={loadingSubmit || loadingPrescription} // Disable if submitting visit or generating Rx
-                            />
-                        </div>
-
-                        {/* Notes Input */}
-                        <div>
-                            <label htmlFor="visitNotes" className="block text-sm font-medium text-off-white/80 mb-1">
-                                Visit Notes (Diagnosis, Treatment Plan)
-                            </label>
-                            <textarea
-                                id="visitNotes"
-                                rows={6}
-                                value={visitNotes}
-                                onChange={(e) => setVisitNotes(e.target.value)}
-                                className="w-full px-4 py-2.5 rounded-md bg-dark-input border border-border-color text-white placeholder-off-white/50 focus:outline-none focus:ring-2 focus:ring-electric-blue focus:border-transparent transition duration-150 font-mono text-sm"
-                                placeholder="Enter observations, diagnosis, treatment plan for LLM..."
-                                disabled={loadingSubmit || loadingPrescription} // Disable if submitting visit or generating Rx
-                            />
-                        </div>
-
-                        {/* Error/Success Messages */}
-                        <div className="min-h-[40px] space-y-2"> {/* Container for messages */}
-                            {submitError && (
-                                <div className="bg-red-900/50 border border-red-700 text-red-200 px-4 py-2 rounded-md text-center text-sm flex items-center justify-center gap-2">
-                                    <FaExclamationTriangle className="h-4 w-4" /> {submitError}
-                                </div>
-                            )}
-                            {errorPrescription && (
-                                <div className="bg-orange-900/60 border border-orange-700 text-orange-200 px-4 py-2 rounded-md text-center text-sm flex items-center justify-center gap-2">
-                                    <FaExclamationTriangle className="h-4 w-4" /> {errorPrescription}
-                                </div>
-                            )}
-                            {successMessage && !errorPrescription && (
-                                <div className="bg-green-900/60 border border-green-700 text-green-200 px-4 py-2 rounded-md text-center text-sm flex items-center justify-center gap-2">
-                                    <FaCheckCircle className="h-4 w-4" /> {successMessage}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Show specific loading message for prescription generation */}
-                        {loadingPrescription && (
-                            <div className="flex items-center justify-center text-sm text-pastel-blue py-2 animate-pulse">
-                                <FaSpinner className="animate-spin h-5 w-5 text-electric-blue" />
-                                <span>Generating prescription...</span>
+                    {/* Show EITHER Notes Input OR Drawing QR Code section */}
+                    {!showQrCode && !processingDrawing && (
+                        <form onSubmit={handleCreateVisit} className="space-y-6 mt-6 animate-fade-in">
+                            {/* Reason Input */}
+                            <div>
+                                <label htmlFor="visitReason" className="block text-sm font-medium text-off-white/80 mb-1">
+                                    Reason for Visit <span className="text-red-400">*</span>
+                                </label>
+                                <input
+                                    id="visitReason"
+                                    type="text"
+                                    required
+                                    value={visitReason}
+                                    onChange={(e) => setVisitReason(e.target.value)}
+                                    className="w-full px-4 py-2.5 rounded-md bg-dark-input border border-border-color text-white placeholder-off-white/50 focus:outline-none focus:ring-2 focus:ring-electric-blue focus:border-transparent transition duration-150"
+                                    placeholder="e.g., Follow-up, Checkup, Consultation"
+                                    disabled={loadingSubmit || loadingPrescription || recommendations.length > 0}
+                                />
                             </div>
-                        )}
 
-                        {/* Submit Button */}
-                        <div>
-                            <button
-                                type="submit"
-                                disabled={loadingSubmit || loadingPrescription || recommendations.length > 0}
-                                className="w-full group flex justify-center items-center py-3 px-4 border border-electric-blue rounded-md shadow-sm text-sm font-medium text-electric-blue bg-transparent hover:bg-electric-blue hover:text-dark-bg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-card focus:ring-electric-blue disabled:opacity-50 disabled:cursor-not-allowed transition duration-200 ease-in-out active:scale-95"
-                            >
-                                {(loadingSubmit || loadingPrescription) ? (
-                                    <svg className="animate-spin h-5 w-5 text-electric-blue" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                ) : (
-                                    <span className="group-hover:scale-105 transition-transform duration-200 ease-in-out">Save Visit & Generate Recommendations</span>
+                            {/* Notes Input OR Draw Button */}
+                            <div>
+                                <label htmlFor="visitNotes" className="block text-sm font-medium text-off-white/80 mb-1">
+                                    Visit Notes (Diagnosis, Treatment Plan)
+                                </label>
+                                <textarea
+                                    id="visitNotes"
+                                    rows={6}
+                                    value={visitNotes}
+                                    onChange={(e) => setVisitNotes(e.target.value)}
+                                    className="w-full px-4 py-2.5 rounded-md bg-dark-input border border-border-color text-white placeholder-off-white/50 focus:outline-none focus:ring-2 focus:ring-electric-blue focus:border-transparent transition duration-150 font-mono text-sm"
+                                    placeholder="Enter observations, diagnosis, treatment plan for LLM..."
+                                    disabled={loadingSubmit || loadingPrescription || recommendations.length > 0}
+                                />
+                                {/* Add Draw Notes Button */}
+                                <button
+                                    type="button"
+                                    onClick={handleDrawNotesClick}
+                                    disabled={loadingSubmit || loadingPrescription || recommendations.length > 0}
+                                    className="mt-3 group inline-flex items-center px-4 py-2 border border-pastel-blue/70 text-pastel-blue rounded-md shadow-sm text-sm font-medium bg-transparent hover:bg-pastel-blue/10 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-card focus:ring-pastel-blue disabled:opacity-50 disabled:cursor-not-allowed transition duration-200 ease-in-out"
+                                >
+                                    <FaTabletAlt className="mr-2 h-4 w-4 transition-transform duration-200 group-hover:scale-110" />
+                                    Draw Notes on Tablet Instead
+                                </button>
+                            </div>
+
+                            {/* Drawing Upload Section */}
+                            <div className="border-t border-border-color/50 pt-4">
+                                <label htmlFor="drawingUpload" className="block text-sm font-medium text-off-white/80 mb-2 flex items-center">
+                                    <FaImage className="mr-2 text-pastel-mint" /> Optional: Upload Drawn Notes Image
+                                </label>
+                                <input
+                                    type="file"
+                                    id="drawingUpload"
+                                    ref={fileInputRef}
+                                    accept="image/*"
+                                    onChange={handleDrawingUpload}
+                                    className="block w-full text-sm text-off-white/70 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-electric-blue/20 file:text-electric-blue hover:file:bg-electric-blue/30 file:cursor-pointer disabled:opacity-50"
+                                    disabled={processingDrawing || loadingSubmit || loadingPrescription || recommendations.length > 0}
+                                />
+                                {drawingImagePreviewUrl && !showQrCode && (
+                                    <div className="mt-4 p-2 border border-border-color rounded-lg inline-block bg-dark-input/50">
+                                        <img src={drawingImagePreviewUrl} alt="Drawing Preview" className="max-h-48 rounded" />
+                                    </div>
                                 )}
+                                {processingDrawing && !showQrCode && (
+                                    <div className="flex items-center justify-center text-sm text-pastel-blue py-6 animate-pulse mt-2">
+                                        <FaSpinner className="animate-spin h-5 w-5 mr-3" />
+                                        <span>Processing uploaded drawing for transcription...</span>
+                                    </div>
+                                )}
+                                {drawingError && (
+                                    <p className="text-red-400 text-xs pt-1 mt-1">{drawingError}</p>
+                                )}
+                            </div>
+
+                            {/* Error/Success Messages */}
+                            <div className="min-h-[40px] space-y-2">
+                                {submitError && <p className="text-red-400 text-sm flex items-center"><FaExclamationTriangle className="mr-2" /> {submitError}</p>}
+                                {errorPrescription && <p className="text-red-400 text-sm flex items-center"><FaExclamationTriangle className="mr-2" /> {errorPrescription}</p>}
+                                {successMessage && <p className="text-green-400 text-sm flex items-center"><FaCheckCircle className="mr-2" /> {successMessage}</p>}
+                            </div>
+
+                            {/* Show specific loading message for prescription generation */}
+                            {loadingPrescription && (
+                                <div className="flex items-center justify-center text-sm text-pastel-blue py-2 animate-pulse">
+                                    <FaSpinner className="animate-spin h-5 w-5 text-electric-blue" />
+                                    <span>Generating prescription...</span>
+                                </div>
+                            )}
+
+                            {/* Submit Button */}
+                            <div>
+                                <button
+                                    type="submit"
+                                    disabled={loadingSubmit || loadingPrescription || recommendations.length > 0 || (!visitReason.trim() && !visitNotes.trim() && !drawingBase64)}
+                                    className="w-full group flex justify-center items-center py-3 px-4 border border-electric-blue rounded-md shadow-sm text-sm font-medium text-electric-blue bg-transparent hover:bg-electric-blue hover:text-dark-bg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-card focus:ring-electric-blue disabled:opacity-50 disabled:cursor-not-allowed transition duration-200 ease-in-out"
+                                >
+                                    {loadingSubmit ? (
+                                        <FaSpinner className="animate-spin h-5 w-5 text-electric-blue" />
+                                    ) : (
+                                        <span className="group-hover:scale-105 transition-transform duration-200 ease-in-out">Generate Prescription Suggestions</span>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
+                    )}
+
+                    {/* Drawing Processing Indicator (Only shown when uploading file) */}
+                    {processingDrawing && !showQrCode && (
+                        <div className="flex items-center justify-center text-sm text-pastel-blue py-6 animate-pulse mt-2">
+                            <FaSpinner className="animate-spin h-5 w-5 mr-3" />
+                            <span>Processing uploaded drawing for transcription...</span>
+                        </div>
+                    )}
+
+                    {/* --- QR Code Display Section --- */}
+                    {(showQrCode || (isListeningForDrawing && !drawingImagePreviewUrl)) && (
+                        <div className="mt-6 p-6 border border-dashed border-border-color rounded-lg text-center animate-fade-in bg-dark-input/30">
+                            <h3 className="text-lg font-semibold text-pastel-blue mb-4 flex items-center justify-center">
+                                <FaQrcode className="mr-2" /> Scan to Draw Notes
+                            </h3>
+                            <p className="text-sm text-off-white/70 mb-5">
+                                Scan the QR code with another device (like a tablet) to open the drawing canvas. Notes will appear here automatically.
+                            </p>
+                            <div className="flex justify-center mb-5 p-4 bg-white rounded-lg inline-block shadow-lg">
+                                {drawingChannelId && (
+                                    <QRCode
+                                        value={`https://37e2-131-215-220-33.ngrok-free.app/draw/${drawingChannelId}`} // <-- Use ngrok URL
+                                        size={180}
+                                        level="M" // Error correction level
+                                    />
+                                )}
+                            </div>
+                            {isListeningForDrawing && (
+                                <div className="flex items-center justify-center text-sm text-pastel-blue py-2 animate-pulse mt-2">
+                                    <FaSpinner className="animate-spin h-4 w-4 mr-2" />
+                                    <span>Waiting for notes from tablet...</span>
+                                </div>
+                            )}
+                            {drawingError && (
+                                <p className="text-red-400 text-xs pt-1 mt-2">{drawingError}</p>
+                            )}
+                            <button
+                                onClick={handleCancelDrawing}
+                                className="mt-4 px-4 py-2 border border-red-500/70 text-red-400 rounded-md shadow-sm text-sm font-medium bg-transparent hover:bg-red-500/10 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-card focus:ring-red-500 transition duration-200 ease-in-out"
+                            >
+                                Cancel Drawing Sync
                             </button>
                         </div>
-                    </form>
+                    )}
+                    {/* Show Preview after QR scan */}
+                    {drawingImagePreviewUrl && !showQrCode && (
+                        <div className="mt-6 p-4 border border-border-color rounded-lg inline-block bg-dark-input/50 animate-fade-in">
+                            <p className="text-sm text-pastel-mint mb-2">Received drawing:</p>
+                            <img src={drawingImagePreviewUrl} alt="Drawing Preview" className="max-h-48 rounded" />
+                            {/* Still allow submitting if image received via QR */}
+                            {!loadingPrescription && !recommendations.length && (
+                                <div className="mt-4 pt-4 border-t border-border-color/50">
+                                    <button
+                                        onClick={handleCreateVisit} // Reuse the same handler, it uses drawingBase64
+                                        disabled={loadingSubmit || loadingPrescription || recommendations.length > 0}
+                                        className="w-full group flex justify-center items-center py-3 px-4 border border-electric-blue rounded-md shadow-sm text-sm font-medium text-electric-blue bg-transparent hover:bg-electric-blue hover:text-dark-bg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-card focus:ring-electric-blue disabled:opacity-50 disabled:cursor-not-allowed transition duration-200 ease-in-out"
+                                    >
+                                        {loadingSubmit ? (
+                                            <FaSpinner className="animate-spin h-5 w-5 text-electric-blue" />
+                                        ) : (
+                                            <span className="group-hover:scale-105 transition-transform duration-200 ease-in-out">Generate Prescription Suggestions</span>
+                                        )}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    {/* --- End QR Code Display Section --- */}
+
                 </div>
             )}
 
-            {/* Recommendation Review Section (conditionally rendered) */} 
+            {/* Recommendation Review Section (conditionally rendered) */}
             {recommendations.length > 0 && (
                 <div className="mt-10 p-6 bg-dark-card border border-border-color rounded-xl shadow-lg animate-fade-in">
                     <h2 className="text-2xl font-semibold text-white mb-6 border-b border-border-color pb-3">Review AI Recommendations</h2>
                     <div className="space-y-5">
                         {recommendations.map((rec) => (
                             <div key={rec.id} className={`p-4 rounded-lg border transition-all duration-200 ${rec.status === 'approved' ? 'border-green-500/50 bg-green-900/20' : rec.status === 'rejected' ? 'border-red-500/50 bg-red-900/20 opacity-60' : 'border-border-color/50 bg-dark-input/30 hover:bg-dark-input/50'}`}>
-                                {/* Medication Details */} 
+                                {/* Medication Details */}
                                 <p className="font-semibold text-base text-pastel-blue mb-1">{rec.medicationName}</p>
                                 <p className="text-sm text-off-white/80 mb-1">Dosage: {rec.dosage} | Frequency: {rec.frequency}</p>
                                 {rec.llmNotes && <p className="text-xs italic text-off-white/60 mt-2 mb-3 border-t border-border-color/30 pt-2">Notes from AI: {rec.llmNotes}</p>}
 
-                                {/* Validation Warning */} 
+                                {/* Validation Warning */}
                                 {rec.validationIssue && (
-                                     <div className="my-2 p-2 bg-orange-900/40 border border-orange-700 rounded text-orange-200 text-xs flex items-center">
-                                         <FaExclamationTriangle className="h-4 w-4 mr-2 flex-shrink-0" />
-                                         <span>{rec.validationIssue}</span>
-                                     </div>
+                                    <div className="my-2 p-2 bg-orange-900/40 border border-orange-700 rounded text-orange-200 text-xs flex items-center">
+                                        <FaExclamationTriangle className="h-4 w-4 mr-2 flex-shrink-0" />
+                                        <span>{rec.validationIssue}</span>
+                                    </div>
                                 )}
 
-                                {/* Clinician Comment */} 
+                                {/* Clinician Comment */}
                                 <textarea
                                     placeholder="Add clinician notes/comments for this prescription..."
                                     value={rec.clinicianComment}
@@ -877,16 +1191,16 @@ Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
                                     disabled={rec.status === 'rejected'}
                                 />
 
-                                {/* Action Buttons */} 
+                                {/* Action Buttons */}
                                 <div className="flex justify-end space-x-3 mt-3">
-                                    <button 
+                                    <button
                                         type="button"
                                         onClick={() => handleStatusChange(rec.id, 'rejected')}
                                         className={`px-3 py-1 text-xs rounded font-medium transition duration-150 ${rec.status === 'rejected' ? 'bg-red-600/80 hover:bg-red-600 text-white' : 'bg-dark-bg border border-border-color text-off-white/70 hover:bg-red-700/30 hover:text-red-300'}`}
                                     >
                                         Reject
                                     </button>
-                                    <button 
+                                    <button
                                         type="button"
                                         onClick={() => handleStatusChange(rec.id, 'approved')}
                                         className={`px-3 py-1 text-xs rounded font-medium transition duration-150 ${rec.status === 'approved' ? 'bg-green-600/80 hover:bg-green-600 text-white' : 'bg-dark-bg border border-border-color text-off-white/70 hover:bg-green-700/30 hover:text-green-300'}`}
@@ -898,14 +1212,14 @@ Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
                         ))}
                     </div>
 
-                    {/* Validation/Finalize Buttons */} 
+                    {/* Validation/Finalize Buttons */}
                     <div className="mt-8 pt-6 border-t border-border-color flex flex-col sm:flex-row justify-end items-center gap-4">
-                         {errorPrescription && !loadingPrescription && 
-                            <p className="text-red-400 text-sm text-left flex-grow mr-4">{errorPrescription}</p>} 
-                         {finalizeError && !isFinalizing && 
-                            <p className="text-red-400 text-sm text-left flex-grow mr-4">{finalizeError}</p>} 
-                         {successMessage && !loadingPrescription && !isFinalizing &&
-                             <p className="text-green-400 text-sm text-left flex-grow mr-4">{successMessage}</p>}
+                        {errorPrescription && !loadingPrescription &&
+                            <p className="text-red-400 text-sm text-left flex-grow mr-4">{errorPrescription}</p>}
+                        {finalizeError && !isFinalizing &&
+                            <p className="text-red-400 text-sm text-left flex-grow mr-4">{finalizeError}</p>}
+                        {successMessage && !loadingPrescription && !isFinalizing &&
+                            <p className="text-green-400 text-sm text-left flex-grow mr-4">{successMessage}</p>}
 
                         <button
                             type="button"
@@ -913,8 +1227,8 @@ Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
                             disabled={loadingPrescription || isFinalizing}
                             className="w-full sm:w-auto flex items-center justify-center px-4 py-2 border border-electric-blue text-electric-blue rounded-md hover:bg-electric-blue/10 disabled:opacity-50 transition text-sm font-medium"
                         >
-                             {loadingPrescription ? <FaSpinner className="animate-spin mr-2" /> : <FaCheckCircle className="mr-2" />}
-                             {loadingPrescription ? 'Validating...' : 'Validate Selections'}
+                            {loadingPrescription ? <FaSpinner className="animate-spin mr-2" /> : <FaCheckCircle className="mr-2" />}
+                            {loadingPrescription ? 'Validating...' : 'Validate Selections'}
                         </button>
                         <button
                             type="button"
@@ -922,24 +1236,24 @@ Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
                             disabled={!isValidated || !canFinalize || isFinalizing || loadingPrescription}
                             className="w-full sm:w-auto flex items-center justify-center px-4 py-2 border border-pastel-green text-pastel-green rounded-md hover:bg-pastel-green/10 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm font-medium"
                         >
-                             {isFinalizing ? <FaSpinner className="animate-spin mr-2" /> : <FaUserPlus className="mr-2" />}
-                             {isFinalizing ? 'Finalizing...' : 'Finalize Prescriptions'}
+                            {isFinalizing ? <FaSpinner className="animate-spin mr-2" /> : <FaUserPlus className="mr-2" />}
+                            {isFinalizing ? 'Finalizing...' : 'Finalize Prescriptions'}
                         </button>
                     </div>
 
-                    {/* Regeneration Button - Appears only when possible */} 
+                    {/* Regeneration Button - Appears only when possible */}
                     {canRegenerate && (
-                         <div className="mt-4 flex justify-center">
-                             <button 
-                                 type="button"
-                                 onClick={handleRegenerate}
-                                 disabled={loadingRegenerate}
-                                 className="flex items-center justify-center px-4 py-2 border border-orange-400 text-orange-400 rounded-md hover:bg-orange-400/10 disabled:opacity-50 transition text-sm font-medium"
-                             >
-                                 {loadingRegenerate ? <FaSpinner className="animate-spin mr-2" /> : <FaCheckCircle className="mr-2" />} 
-                                 {loadingRegenerate ? 'Regenerating...' : 'Regenerate Suggestions (Based on Rejections)'}
-                             </button>
-                         </div>
+                        <div className="mt-4 flex justify-center">
+                            <button
+                                type="button"
+                                onClick={handleRegenerate}
+                                disabled={loadingRegenerate}
+                                className="flex items-center justify-center px-4 py-2 border border-orange-400 text-orange-400 rounded-md hover:bg-orange-400/10 disabled:opacity-50 transition text-sm font-medium"
+                            >
+                                {loadingRegenerate ? <FaSpinner className="animate-spin mr-2" /> : <FaCheckCircle className="mr-2" />}
+                                {loadingRegenerate ? 'Regenerating...' : 'Regenerate Suggestions (Based on Rejections)'}
+                            </button>
+                        </div>
                     )}
                 </div>
             )}

@@ -16,6 +16,7 @@ import { AuthProvider } from './context/AuthContext';
 import './App.css'; // Keep App.css for potential global overrides if needed
 import VisitDetailPage from './pages/VisitDetailPage';
 import ChatbotPage from './pages/ChatbotPage';
+import DrawingPage from './pages/DrawingPage';
 
 // Removed Placeholder Login Page Component
 
@@ -52,6 +53,7 @@ function App() {
             />
             <Route path="/visit/:visitId" element={<VisitDetailPage />} />
             <Route path="/visit/:visitId/chat" element={<ChatbotPage />} />
+            <Route path="/draw/:channelId" element={<DrawingPage />} />
           </Routes>
         </main>
         <Footer />

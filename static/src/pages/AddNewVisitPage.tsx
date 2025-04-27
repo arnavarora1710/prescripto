@@ -1026,7 +1026,7 @@ Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
                             <div className="flex justify-center mb-5 p-4 bg-white rounded-lg inline-block shadow-lg">
                                 {drawingChannelId && (
                                     <QRCode
-                                        value={`http://localhost:8080/draw/${drawingChannelId}`} // Using Spring Boot port 8080 instead of Vite port 5173
+                                        value={`https://prescripto-service-961908516332.us-central1.run.app/draw/${drawingChannelId}`} // Using Spring Boot port 8080 instead of Vite port 5173
                                         size={180}
                                         level="M" // Error correction level
                                     />

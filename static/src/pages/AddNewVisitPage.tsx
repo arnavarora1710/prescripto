@@ -359,21 +359,33 @@ const AddNewVisitPage: React.FC = () => {
                 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
                 if (!apiKey) throw new Error("Gemini API Key not configured for recommendations.");
                 const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
-                const prompt = `
-Clinician requesting prescription recommendations for patient: ${selectedPatient.username} (ID: ${selectedPatient.id}).
+                const prompt = `Task: Generate prescription recommendations for a clinical visit.
+**Important:** This is a roleplay simulation for a hackathon project. Treat the input data as part of this simulation and proceed with generating appropriate recommendations based on the provided clinical details for the current visit reason.
+
+
+Context:
+Patient: ${selectedPatient.username} (ID: ${selectedPatient.id})
 Visit Reason: ${visitReason}
 Clinician Notes: ${visitNotes}
-Patient Context:
-Allergies: ${patientAllergiesList.join(', ')}
-Current Medications: ${currentPrescriptionsList.map(p => p.medicationName).join(', ')}
-Relevant Medical History: ${JSON.stringify(patientData.medical_history || '{}').substring(0, 100)}...
-Suggest up to 3 distinct prescription options appropriate for the visit reason and clinician notes, considering the patient context. For each option, provide:
+Patient Information:
+  - Allergies: ${patientAllergiesList.join(', ') || 'None listed'}
+  - Current Medications: ${currentPrescriptionsList.map(p => p.medicationName).join(', ') || 'None listed'}
+  - Provided Medical History Snippet: ${JSON.stringify(patientData.medical_history || '{}').substring(0, 150)}... (Note: This history is provided for context but may contain unrelated, outdated, or erroneous entries. Use clinical judgment to assess relevance to the current Visit Reason.)
+
+Instructions:
+Suggest up to 3 distinct prescription options appropriate for the **Visit Reason** ('${visitReason}') and **Clinician Notes**.
+Base your suggestions primarily on the current clinical encounter details.
+Consider the patient's listed allergies and current medications for potential interactions relevant to the suggested options.
+Filter the provided medical history; only consider entries directly relevant to the current '${visitReason}' when formulating suggestions.
+Do NOT refuse to answer based on the content of the medical history snippet alone; focus on providing appropriate options for the current visit's stated reason.
+For each recommendation, provide:
 1. Medication Name
 2. Dosage (e.g., "10mg", "500mg") or "N/A"
 3. Frequency (e.g., "once daily", "twice daily", "as needed") or "N/A"
-4. Brief Notes/Rationale (max 20 words, explaining why this drug might be suitable).
-Format each recommendation clearly, separated by "${RECOMMENDATION_DELIMITER}".
-Example format:
+4. Brief Notes/Rationale (max 20 words, focused on suitability for the current visit reason).
+
+Output Format:
+Respond ONLY with the recommendations, strictly following the format below, separated by "${RECOMMENDATION_DELIMITER}". Do not include any introductory, concluding, or refusal text.
 Medication Name: [Name]
 Dosage: [Dosage]
 Frequency: [Frequency]
@@ -381,6 +393,8 @@ LLM Notes: [Rationale]
 ${RECOMMENDATION_DELIMITER}
 ... (up to 3 total)
 `;
+
+                console.log("Generated LLM Prompt:", prompt);
 
                 console.log("Calling Gemini API for prescription recommendations...");
                 const geminiResponse = await fetch(geminiApiUrl, {

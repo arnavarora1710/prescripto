@@ -7,6 +7,7 @@
 /Users/arnav/prescripto/src/main/java/com/hacktech/healthai/controller/PatientController.java
 /Users/arnav/prescripto/src/main/java/com/hacktech/healthai/controller/ValidationController.java
 /Users/arnav/prescripto/src/main/java/com/hacktech/healthai/dto/CurrentPrescriptionDto.java
+/Users/arnav/prescripto/src/main/java/com/hacktech/healthai/dto/InsuranceCoverageDto.java
 /Users/arnav/prescripto/src/main/java/com/hacktech/healthai/dto/LlmRequestDto.java
 /Users/arnav/prescripto/src/main/java/com/hacktech/healthai/dto/LlmResponseDto.java
 /Users/arnav/prescripto/src/main/java/com/hacktech/healthai/dto/OcrRequestDto.java

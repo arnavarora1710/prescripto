@@ -332,10 +332,6 @@ const LoginPage: React.FC = () => {
             {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
           </button>
         </div>
-
-        <p className="mt-8 text-xs text-off-white/50 text-center">
-          By signing in or signing up, you agree to our Terms of Service and Privacy Policy.
-        </p>
       </div>
     </div>
   );

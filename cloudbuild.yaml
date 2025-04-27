@@ -1,11 +1,17 @@
 steps:
   # 1. Install frontend dependencies and build static assets
   # Use Node.js 20 LTS official image
+  - name: 'bash' # Use bash to remove the lock file first
+    args: ['rm', '-f', 'package-lock.json']
+    dir: 'static'
+    id: 'remove-lockfile'
+
   - name: 'node:20'
     entrypoint: npm
-    args: ['install', '--legacy-peer-deps'] # Re-added --legacy-peer-deps
+    args: ['install', '--legacy-peer-deps']
     dir: 'static' # Run npm install in the static directory
     id: 'npm-install'
+    waitFor: ['remove-lockfile'] # Wait for rm to finish
 
   - name: 'node:20'
     entrypoint: npm

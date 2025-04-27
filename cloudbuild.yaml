@@ -14,7 +14,6 @@ steps:
     waitFor: ['remove-lockfile'] # Wait for rm to finish
 
   - name: 'node:20'
-    # Change entrypoint to bash to set env vars before build
     entrypoint: bash
     # Define secrets from Secret Manager to be available as env vars
     secretEnv: ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY', 'VITE_GEMINI_API_KEY']

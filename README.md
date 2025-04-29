@@ -1,6 +1,6 @@
 # Prescripto 🫀 - [Hacktech '25 Winner](https://devpost.com/software/prescripto-mxbr6v)
 
-**Your AI + Doctor–Powered Prescription Companion**
+## Your AI + Doctor–Powered Prescription Companion
 
 https://github.com/user-attachments/assets/c8a2ca93-a41b-4139-b8c8-41295f6b52c5
 

@@ -38,6 +38,8 @@ https://github.com/user-attachments/assets/c8a2ca93-a41b-4139-b8c8-41295f6b52c5
 - **Advanced prompt engineering**: allergy-safe, coverage-aware recommendations.
 - **Server-side orchestration** ensures secure API usage & low latency.
 
+---
+
 ## 🚀 Getting Started
 
 **Prerequisites:** Node.js, Java 17, Maven/Gradle, Supabase account, Gemini API key.

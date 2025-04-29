@@ -1,4 +1,4 @@
-# Prescripto 🫀
+# Prescripto 🫀 - [Hacktech '25 Winner](https://devpost.com/software/prescripto-mxbr6v)
 
 **Your AI + Doctor–Powered Prescription Companion**
 
